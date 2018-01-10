@@ -63,3 +63,6 @@ iMatch.disconnect(
     app.showError      // show the error if you fail
 );
 ```
+
+## Message protocol
+See the [Wiki](https://github.com/Gridler/cordova-plugin-imatch/wiki/JSON-RPC-Protocol) for more information about the message protocol and all available commands.
