@@ -1,0 +1,28 @@
+{
+  "name": "cordova-plugin-imatch",
+  "version": "1.0.0",
+  "description": "Gridler iMatch Plugin",
+  "main": "./www/iMatch.js",
+  "cordova": {
+    "id": "cordova-plugin-imatch",
+    "platforms": [
+      "ios"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bpiservices/cordova-plugin-imatch.git"
+  },
+  "keywords": [
+    "cordova",
+    "bluetooth",
+    "ble",
+    "ecosystem:cordova"
+  ],
+  "author": "Gridler <developer@gridler.com>",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/bpiservices/cordova-plugin-imatch/issues"
+  },
+  "homepage": "https://github.com/bpiservices/cordova-plugin-imatch#readme"
+}

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<plugin
+    xmlns="http://www.phonegap.com/ns/plugins/1.0"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    id="cordova-plugin-imatch"
+    version="0.1.0">
+
+    <name>Gridler iMatch</name>
+    <description>Gridler iMatch Plugin</description>
+    <license>Apache 2.0</license>
+    <keywords>bluetooth, BLE, gridler, imatch</keywords>
+    <repo>https://github.com/bpiservices/cordova-plugin-imatch.git</repo>
+    <issue>https://github.com/bpiservices/cordova-plugin-imatch/issues</issue>
+
+    <js-module src="www/iMatch.js" name="iMatch">
+        <clobbers target="window.iMatch" />
+    </js-module>
+
+    <platform name="ios">
+
+        <config-file target="config.xml" parent="/widget">
+            <feature name="iMatch">
+                <param name="ios-package" value="GridleriMatch" onload="true"/>
+            </feature>
+        </config-file>
+
+        <header-file src="src/ios/GridleriMatch.h" target-dir="iMatch" />
+        <source-file src="src/ios/GridleriMatch.m" target-dir="iMatch" />
+        <header-file src="src/ios/CBPeripheral+BTSExtensions.h" target-dir="iMatch" />
+        <source-file src="src/ios/CBPeripheral+BTSExtensions.m" target-dir="iMatch" />
+        <header-file src="src/ios/BLE.h" target-dir="iMatch" />
+        <header-file src="src/ios/BLEDefines.h" target-dir="iMatch" />
+        <source-file src="src/ios/BLE.m" target-dir="iMatch" />
+
+        <!-- frameworks -->
+        <framework src="CoreBluetooth.framework" />
+
+    </platform>
+</plugin>
