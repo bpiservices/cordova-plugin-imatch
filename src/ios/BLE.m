@@ -190,7 +190,7 @@ CBUUID *writeCharacteristicUUID;
 
 - (void) controlSetup
 {
-    self.CM = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
+    self.CM = [[CBCentralManager alloc] initWithDelegate:self queue:nil options:@{CBCentralManagerOptionShowPowerAlertKey: @NO}];
 }
 
 - (int) findBLEPeripherals:(int) timeout
