@@ -1,17 +1,18 @@
 {
   "name": "cordova-plugin-imatch",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Gridler iMatch Plugin",
   "main": "./www/iMatch.js",
   "cordova": {
     "id": "cordova-plugin-imatch",
     "platforms": [
-      "ios"
+      "ios",
+      "android"
     ]
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bpiservices/cordova-plugin-imatch.git"
+    "url": "git+https://github.com/Gridler/cordova-plugin-imatch.git"
   },
   "keywords": [
     "cordova",
@@ -22,7 +23,7 @@
   "author": "Gridler <developer@gridler.com>",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/bpiservices/cordova-plugin-imatch/issues"
+    "url": "https://github.com/Gridler/cordova-plugin-imatch/issues"
   },
-  "homepage": "https://github.com/bpiservices/cordova-plugin-imatch#readme"
+  "homepage": "https://github.com/Gridler/cordova-plugin-imatch#readme"
 }

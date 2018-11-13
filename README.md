@@ -53,7 +53,7 @@ iMatch.subscribe(function (data) {
 
 Write message to the iMatch device:
 ```
-iMatch.write("{\"imatch\":\"1.0\", \"device\":\"sys\", \"method\":\"datetime\", \"params\":\"\(2018, 1, 5, 5, 13, 31, 6, 0)\", \"id\":\"1\"}");
+iMatch.write({imatch: "1.0", device: "sys", method: "datetime", params: "(2018, 1, 5, 5, 13, 31, 6, 0)", id: "1"});
 ```
 
 Disconnect from the iMatch device:
