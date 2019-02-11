@@ -112,6 +112,17 @@ public class GridleriMatch extends CordovaPlugin {
             transmit(data);
         }
 
+        if ("writeBytes".equals(action)) {
+            String data = "";
+            try {
+                data = args.getString(0);
+            } catch (Exception ex) {
+            }
+
+            byte[] packet = Base64.decode(data, Base64.NO_WRAP);
+            transmitBytes(packet);
+        }
+
         callbackContext.error("Unknown command: " + action);
         return true;
     }
@@ -234,7 +245,7 @@ public class GridleriMatch extends CordovaPlugin {
             public void onConnectSuccess(BleDevice bleDevice, BluetoothGatt gatt, int status) {
                 BleManager.getInstance().setMtu(
                     bleDevice,
-                    256,
+                    512,
                     new BleMtuChangedCallback() {
                         @Override
                         public void onSetMTUFailure(BleException exception) {
@@ -316,6 +327,25 @@ public class GridleriMatch extends CordovaPlugin {
 
         Log.i(TAG, "--> " + json_package);
         byte [] packet = createRawPackage(json_package);
+        BleManager.getInstance().write(
+            ImatchBleDevice,
+            IMATCH_SPS_SERVICE,
+            IMATCH_WRITE_CHARACTERISTIC,
+            packet,
+            new BleWriteCallback() {
+                @Override
+                public void onWriteSuccess(int current, int total, byte[] justWrite) {
+                    Log.v(TAG, "onWriteSuccess: " + current + " of " + total + ". " + justWrite.length + " bytes.");
+                }
+
+                @Override
+                public void onWriteFailure(BleException exception) {
+                    Log.e(TAG, "onWriteFailure: " + exception.getDescription());
+                }
+            });
+    }
+
+    private void transmitBytes(byte [] packet) {
         BleManager.getInstance().write(
             ImatchBleDevice,
             IMATCH_SPS_SERVICE,

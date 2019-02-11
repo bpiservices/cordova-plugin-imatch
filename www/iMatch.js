@@ -54,6 +54,11 @@ module.exports = {
         cordova.exec(success, failure, "iMatch", "write", [data]);
     },
 
+    // writes raw data to the bluetooth serial port
+    writeBytes: function (data, success, failure) {
+        cordova.exec(success, failure, "iMatch", "writeBytes", [data]);
+    },
+
     // calls the success callback when new data is available with an ArrayBuffer
     subscribe: function (success, failure) {
         successWrapper = function(data) {
