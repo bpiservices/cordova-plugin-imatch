@@ -1,6 +1,6 @@
 {
   "name": "cordova-plugin-imatch",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Gridler iMatch Plugin",
   "main": "./www/iMatch.js",
   "cordova": {
@@ -17,7 +17,10 @@
   "keywords": [
     "cordova",
     "bluetooth",
-    "ble",
+    "fingerprint",
+    "passport",
+    "smartcard",
+    "nfc",
     "ecosystem:cordova"
   ],
   "author": "Gridler <developer@gridler.com>",
