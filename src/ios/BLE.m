@@ -173,10 +173,16 @@ CBUUID *writeCharacteristicUUID;
         return;
     }
 
-    if ((characteristic.properties & CBCharacteristicPropertyWrite) == CBCharacteristicPropertyWrite) {
-        [p writeValue:data forCharacteristic:characteristic type:CBCharacteristicWriteWithResponse];
+    NSUInteger mtu = [p maximumWriteValueLengthForType:(CBCharacteristicWriteWithoutResponse)];
+    if (data.length >= mtu)
+    {
+        NSData *part1 = [data subdataWithRange:NSMakeRange(0, mtu)];
+        NSData *part2 = [data subdataWithRange:NSMakeRange(mtu, data.length - mtu)];
+        [p writeValue:part1 forCharacteristic:characteristic type:CBCharacteristicWriteWithoutResponse];
+        [p writeValue:part2 forCharacteristic:characteristic type:CBCharacteristicWriteWithoutResponse];
     }
-    else if ((characteristic.properties & CBCharacteristicPropertyWriteWithoutResponse) == CBCharacteristicPropertyWriteWithoutResponse) {
+    else
+    {
         [p writeValue:data forCharacteristic:characteristic type:CBCharacteristicWriteWithoutResponse];
     }
 }
