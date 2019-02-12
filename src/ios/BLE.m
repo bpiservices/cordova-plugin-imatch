@@ -24,7 +24,6 @@
 static bool isConnected = false;
 static int rssi = 0;
 
-// TODO should have a configurable list of services
 CBUUID *serviceUUID;
 CBUUID *serialServiceUUID;
 CBUUID *readCharacteristicUUID;
@@ -42,31 +41,17 @@ CBUUID *writeCharacteristicUUID;
 
 -(void) read
 {
-//    CBUUID *uuid_service = [CBUUID UUIDWithString:@RBL_SERVICE_UUID];
-//    CBUUID *uuid_char = [CBUUID UUIDWithString:@RBL_CHAR_TX_UUID];
-
-//    [self readValue:uuid_service characteristicUUID:uuid_char p:activePeripheral];
      [self readValue:serialServiceUUID characteristicUUID:readCharacteristicUUID p:activePeripheral];
-
 }
 
 -(void) write:(NSData *)d
 {
-//    CBUUID *uuid_service = [CBUUID UUIDWithString:@RBL_SERVICE_UUID];
-//    CBUUID *uuid_char = [CBUUID UUIDWithString:@RBL_CHAR_RX_UUID];
-//
-//    [self writeValue:uuid_service characteristicUUID:uuid_char p:activePeripheral data:d];
     [self writeValue:serialServiceUUID characteristicUUID:writeCharacteristicUUID p:activePeripheral data:d];
 }
 
 -(void) enableReadNotification:(CBPeripheral *)p
 {
-//    CBUUID *uuid_service = [CBUUID UUIDWithString:@RBL_SERVICE_UUID];
-//    CBUUID *uuid_char = [CBUUID UUIDWithString:@RBL_CHAR_TX_UUID];
-//
-//    [self notification:uuid_service characteristicUUID:uuid_char p:p on:YES];
     [self notification:serialServiceUUID characteristicUUID:readCharacteristicUUID p:p on:YES];
-
 }
 
 -(void) notification:(CBUUID *)serviceUUID characteristicUUID:(CBUUID *)characteristicUUID p:(CBPeripheral *)p on:(BOOL)on
@@ -176,6 +161,7 @@ CBUUID *writeCharacteristicUUID;
     NSUInteger mtu = [p maximumWriteValueLengthForType:(CBCharacteristicWriteWithoutResponse)];
     if (data.length >= mtu)
     {
+        NSLog(@"data.length: %lu, mtu: %lu", data.length, mtu);
         NSData *part1 = [data subdataWithRange:NSMakeRange(0, mtu)];
         NSData *part2 = [data subdataWithRange:NSMakeRange(mtu, data.length - mtu)];
         [p writeValue:part1 forCharacteristic:characteristic type:CBCharacteristicWriteWithoutResponse];
@@ -322,7 +308,6 @@ CBUUID *writeCharacteristicUUID;
     for (int i=0; i < p.services.count; i++)
     {
         CBService *s = [p.services objectAtIndex:i];
-        //        printf("Fetching characteristics for service with UUID : %s\r\n",[self CBUUIDToString:s.UUID]);
         [p discoverCharacteristics:nil forService:s];
     }
 }
@@ -490,12 +475,8 @@ static bool done = false;
 {
     if (!error)
     {
-        //        printf("Characteristics of service with UUID : %s found\n",[self CBUUIDToString:service.UUID]);
-
         for (int i=0; i < service.characteristics.count; i++)
         {
-            //            CBCharacteristic *c = [service.characteristics objectAtIndex:i];
-            //            printf("Found characteristic %s\n",[ self CBUUIDToString:c.UUID]);
             CBService *s = [peripheral.services objectAtIndex:(peripheral.services.count - 1)];
 
             if ([service.UUID isEqual:s.UUID])

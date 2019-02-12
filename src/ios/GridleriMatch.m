@@ -124,6 +124,23 @@
     }
     [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
 }
+    
+- (void)writeBytes:(CDVInvokedUrlCommand*)command {
+    NSLog(@"writeBytes");
+    
+    CDVPluginResult *pluginResult = nil;
+    NSString *data  = [command.arguments objectAtIndex:0];
+    
+    if (data != nil) {
+        NSData *immutableData = [[NSData alloc] initWithBase64EncodedString:data options:0];
+        [_bleShield write:immutableData];
+        
+        pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
+    } else {
+        pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"data was null"];
+    }
+    [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+}
 
 - (void)list:(CDVInvokedUrlCommand*)command {
 
