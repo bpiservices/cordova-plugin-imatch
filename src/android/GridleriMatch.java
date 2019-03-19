@@ -225,7 +225,9 @@ public class GridleriMatch extends CordovaPlugin {
         }
         if (ImatchBleDevice == null) {
             Log.e(TAG, "Connect called but device does not exist in scanresults");
-            connectCallbackContext.error("Connect called but device does not exist in scanresults");
+            PluginResult pluginResult = new PluginResult(PluginResult.Status.ERROR, "Connect called but device does not exist in scanresults");
+            pluginResult.setKeepCallback(true);
+            connectCallbackContext.sendPluginResult(pluginResult);
             return false;
         }
 
@@ -238,7 +240,9 @@ public class GridleriMatch extends CordovaPlugin {
             @Override
             public void onConnectFail(BleDevice bleDevice, BleException exception) {
                 Log.d(TAG, "onConnectFail");
-                connectCallbackContext.error(exception.getDescription());
+                PluginResult pluginResult = new PluginResult(PluginResult.Status.ERROR, exception.getDescription());
+                pluginResult.setKeepCallback(true);
+                connectCallbackContext.sendPluginResult(pluginResult);
             }
 
             @Override
@@ -264,7 +268,9 @@ public class GridleriMatch extends CordovaPlugin {
                                     @Override
                                     public void onNotifySuccess() {
                                         Log.d(TAG, "onConnectSuccess");
-                                        connectCallbackContext.success();
+                                        PluginResult pluginResult = new PluginResult(PluginResult.Status.OK);
+                                        pluginResult.setKeepCallback(true);
+                                        connectCallbackContext.sendPluginResult(pluginResult);
                                     }
 
                                     @Override
@@ -286,6 +292,9 @@ public class GridleriMatch extends CordovaPlugin {
 
             @Override
             public void onDisConnected(boolean isActiveDisConnected, BleDevice bleDevice, BluetoothGatt gatt, int status) {
+                PluginResult pluginResult = new PluginResult(PluginResult.Status.ERROR, "Disocnnected");
+                pluginResult.setKeepCallback(true);
+                connectCallbackContext.sendPluginResult(pluginResult);
                 Log.d(TAG, "onDisConnected");
             }
         });
