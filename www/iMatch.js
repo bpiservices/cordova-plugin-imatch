@@ -82,33 +82,6 @@ module.exports = {
         cordova.exec(success, failure, "iMatch", "readRSSI", []);
     },
 
-    showBluetoothSettings: function (success, failure) {
-        cordova.exec(success, failure, "iMatch", "showBluetoothSettings", []);
-    },
-
-    enable: function (success, failure) {
-        cordova.exec(success, failure, "iMatch", "enable", []);
-    },
-
-    setDeviceDiscoveredListener: function (notify) {
-        if (typeof notify != 'function')
-            throw 'iMatch.setDeviceDiscoveredListener: Callback not a function';
-
-        cordova.exec(notify, null, "iMatch", "setDeviceDiscoveredListener", []);
-    },
-
-    clearDeviceDiscoveredListener: function () {
-        cordova.exec(null, null, "iMatch", "clearDeviceDiscoveredListener", []);
-    },
-
-    setName: function (newName) {
-        cordova.exec(null, null, "iMatch", "setName", [newName]);
-    },
-
-    setDiscoverable: function (discoverableDuration) {
-        cordova.exec(null, null, "iMatch", "setDiscoverable", [discoverableDuration]);
-    },
-
     stringToArrayBuffer: function(str) {
         var ret = new Uint8Array(str.length);
         for (var i = 0; i < str.length; i++) {
