@@ -90,10 +90,6 @@ module.exports = {
         cordova.exec(success, failure, "iMatch", "enable", []);
     },
 
-    discoverUnpaired: function (success, failure) {
-        cordova.exec(success, failure, "iMatch", "discoverUnpaired", []);
-    },
-
     setDeviceDiscoveredListener: function (notify) {
         if (typeof notify != 'function')
             throw 'iMatch.setDeviceDiscoveredListener: Callback not a function';
