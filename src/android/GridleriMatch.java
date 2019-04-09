@@ -88,6 +88,7 @@ public class GridleriMatch extends CordovaPlugin {
         }
 
         if ("disconnect".equals(action)) {
+            Disconnect();
             callbackContext.success();
             return true;
         }
@@ -300,6 +301,17 @@ public class GridleriMatch extends CordovaPlugin {
         });
 
         return true;
+    }
+        
+    public boolean Disconnect() {
+        try {
+            BleManager.getInstance().disconnect(ImatchBleDevice);
+            ImatchBleDevice = null;
+            return true;
+        }
+        catch (Exception e) {
+            return false;
+        }
     }
 
     private byte[] createRawPackage(String json_package)  {
