@@ -1,6 +1,6 @@
 {
   "name": "cordova-plugin-imatch",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Gridler iMatch Plugin",
   "main": "./www/iMatch.js",
   "cordova": {
