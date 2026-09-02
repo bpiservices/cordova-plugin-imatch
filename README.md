@@ -1,5 +1,5 @@
 # cordova-plugin-imatch
-Cordova plugin for the [Gridler iMatch](http://www.gridler.com/).
+Cordova plugin for the [BPI iMatch](https://bpiservices.eu/en/solutions/imatch/).
 
 ## Install
 Install plugin:
