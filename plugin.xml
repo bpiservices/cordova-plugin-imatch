@@ -4,7 +4,7 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     id="cordova-plugin-imatch"
     xmlns:tools="http://schemas.android.com/tools"
-    version="1.0.7">
+    version="1.0.9">
 
     <name>Gridler iMatch</name>
     <description>Gridler iMatch Plugin</description>
@@ -60,6 +60,7 @@
         <source-file src="src/android/GridleriMatch.java" target-dir="src/com/gridler/iMatch" />
 
         <framework src="com.github.Jasonchenlijian:FastBle:2.3.2" />
+        <framework src="src/android/imatch.gradle" custom="true" type="gradleReference" />
 
     </platform>
 </plugin>
