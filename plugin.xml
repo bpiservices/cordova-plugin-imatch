@@ -59,7 +59,7 @@
 
         <source-file src="src/android/GridleriMatch.java" target-dir="src/com/gridler/iMatch" />
 
-        <framework src="com.clj.fastble:FastBleLib:2.3.2" />
+        <framework src="com.github.Jasonchenlijian:FastBle:2.3.2" />
 
     </platform>
 </plugin>
