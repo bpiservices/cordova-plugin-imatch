@@ -478,7 +478,6 @@ public class GridleriMatch extends CordovaPlugin {
         return true;
     }
 
-    // Android 12 introduced dedicated Bluetooth runtime permissions; below that BLE scanning needs location.
     private String[] requiredPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             return new String[]{Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT};
