@@ -1,3 +1,10 @@
 repositories {
     maven { url = uri('https://jitpack.io') }
 }
+
+dependencies {
+    implementation fileTree(dir: 'src/main/libs', include: ['*.aar'])
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'com.fasterxml.jackson.core:jackson-annotations:2.20'
+    implementation 'com.github.Jasonchenlijian:FastBle:2.4.0'
+}
