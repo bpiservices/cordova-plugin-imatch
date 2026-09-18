@@ -1,18 +1,38 @@
 {
   "name": "cordova-plugin-imatch",
-  "version": "1.0.9",
-  "description": "Gridler iMatch Plugin",
+  "version": "2.0.0",
+  "description": "Cordova plugin for the BPI iMatch.",
   "main": "./www/iMatch.js",
+  "types": "./types/imatch.d.ts",
+  "files": [
+    "plugin.xml",
+    "www/",
+    "src/",
+    "types/",
+    "scripts/",
+    "sdk/README.md",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
   "cordova": {
     "id": "cordova-plugin-imatch",
     "platforms": [
-      "ios",
-      "android"
+      "android",
+      "ios"
     ]
+  },
+  "engines": {
+    "cordovaDependencies": {
+      "2.0.0": {
+        "cordova-android": ">=15.0.0",
+        "cordova-ios": ">=8.0.0"
+      }
+    }
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Gridler/cordova-plugin-imatch.git"
+    "url": "git+https://github.com/bpiservices/cordova-plugin-imatch.git"
   },
   "keywords": [
     "cordova",
@@ -21,12 +41,13 @@
     "passport",
     "smartcard",
     "nfc",
+    "imatch",
     "ecosystem:cordova"
   ],
-  "author": "Gridler <developer@gridler.com>",
+  "author": "BPI Services <developer@bpiservices.eu>",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/Gridler/cordova-plugin-imatch/issues"
+    "url": "https://github.com/bpiservices/cordova-plugin-imatch/issues"
   },
-  "homepage": "https://github.com/Gridler/cordova-plugin-imatch#readme"
+  "homepage": "https://github.com/bpiservices/cordova-plugin-imatch#readme"
 }

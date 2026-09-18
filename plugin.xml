@@ -1,57 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
 <plugin
-    xmlns="http://www.phonegap.com/ns/plugins/1.0"
+    xmlns="http://apache.org/cordova/ns/plugins/1.0"
     xmlns:android="http://schemas.android.com/apk/res/android"
     id="cordova-plugin-imatch"
-    version="1.0.9">
+    version="2.0.0">
 
-    <name>Gridler iMatch</name>
-    <description>Gridler iMatch Plugin</description>
+    <name>BPI iMatch</name>
+    <description>Cordova plugin for the BPI iMatch, built on the native iMatch SDKs</description>
     <license>Apache 2.0</license>
-    <keywords>bluetooth, BLE, gridler, imatch</keywords>
+    <keywords>bluetooth, BLE, fingerprint, passport, smartcard, nfc, imatch</keywords>
     <repo>https://github.com/bpiservices/cordova-plugin-imatch.git</repo>
     <issue>https://github.com/bpiservices/cordova-plugin-imatch/issues</issue>
 
     <engines>
-        <engine name="cordova-android" version=">=12.0.0" />
-        <engine name="cordova-ios" version=">=6.0.0" />
+        <engine name="cordova-android" version=">=15.0.0" />
+        <engine name="cordova-ios" version=">=8.0.0" />
     </engines>
+
+    <preference name="BLUETOOTH_USAGE_DESCRIPTION" default="Bluetooth is required to connect to the iMatch" />
+    <!-- Folder in the app project for the iMatch SDK (android/imatchsdk.aar, ios/iMatchSDK.xcframework) -->
+    <preference name="IMATCH_SDK_DIR" default="imatch-sdk" />
 
     <js-module src="www/iMatch.js" name="iMatch">
         <clobbers target="window.iMatch" />
     </js-module>
 
     <platform name="ios">
+        <hook type="before_plugin_install" src="scripts/stage-sdk.js" />
 
-        <config-file target="config.xml" parent="/widget">
+        <config-file target="config.xml" parent="/*">
             <feature name="iMatch">
-                <param name="ios-package" value="GridleriMatch" onload="true"/>
+                <param name="ios-package" value="GridleriMatch" onload="true" />
             </feature>
         </config-file>
 
-        <header-file src="src/ios/GridleriMatch.h" target-dir="iMatch" />
-        <source-file src="src/ios/GridleriMatch.m" target-dir="iMatch" />
-        <header-file src="src/ios/CBPeripheral+BTSExtensions.h" target-dir="iMatch" />
-        <source-file src="src/ios/CBPeripheral+BTSExtensions.m" target-dir="iMatch" />
-        <header-file src="src/ios/BLE.h" target-dir="iMatch" />
-        <header-file src="src/ios/BLEDefines.h" target-dir="iMatch" />
-        <source-file src="src/ios/BLE.m" target-dir="iMatch" />
+        <config-file target="*-Info.plist" parent="NSBluetoothAlwaysUsageDescription">
+            <string>$BLUETOOTH_USAGE_DESCRIPTION</string>
+        </config-file>
+        <config-file target="*-Info.plist" parent="NSBluetoothPeripheralUsageDescription">
+            <string>$BLUETOOTH_USAGE_DESCRIPTION</string>
+        </config-file>
 
-        <!-- frameworks -->
-        <framework src="CoreBluetooth.framework" />
-
+        <source-file src="src/ios/GridleriMatch.swift" />
+        <framework src="sdk/ios/iMatchSDK.xcframework" custom="true" embed="true" />
     </platform>
-	
+
     <platform name="android">
-    
+        <hook type="before_plugin_install" src="scripts/stage-sdk.js" />
+
         <config-file target="res/xml/config.xml" parent="/*">
             <feature name="iMatch">
-                <param name="android-package" value="com.gridler.imatch.GridleriMatch"/>
+                <param name="android-package" value="com.gridler.imatch.GridleriMatch" />
             </feature>
         </config-file>
-        
+
         <config-file target="AndroidManifest.xml" parent="/manifest">
-            <uses-permission android:name="android.permission.BLUETOOTH"/>
+            <uses-permission android:name="android.permission.BLUETOOTH" />
             <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
             <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
                 android:usesPermissionFlags="neverForLocation" />
@@ -61,10 +65,9 @@
             <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
         </config-file>
 
-        <source-file src="src/android/GridleriMatch.java" target-dir="src/com/gridler/iMatch" />
+        <source-file src="src/android/GridleriMatch.java" target-dir="src/com/gridler/imatch" />
 
-        <framework src="com.github.Jasonchenlijian:FastBle:2.3.2" />
+        <resource-file src="sdk/android/imatchsdk.aar" target="libs/imatchsdk.aar" />
         <framework src="src/android/imatch.gradle" custom="true" type="gradleReference" />
-
     </platform>
 </plugin>
