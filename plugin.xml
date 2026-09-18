@@ -3,7 +3,6 @@
     xmlns="http://www.phonegap.com/ns/plugins/1.0"
     xmlns:android="http://schemas.android.com/apk/res/android"
     id="cordova-plugin-imatch"
-    xmlns:tools="http://schemas.android.com/tools"
     version="1.0.9">
 
     <name>Gridler iMatch</name>
@@ -12,6 +11,11 @@
     <keywords>bluetooth, BLE, gridler, imatch</keywords>
     <repo>https://github.com/bpiservices/cordova-plugin-imatch.git</repo>
     <issue>https://github.com/bpiservices/cordova-plugin-imatch/issues</issue>
+
+    <engines>
+        <engine name="cordova-android" version=">=12.0.0" />
+        <engine name="cordova-ios" version=">=6.0.0" />
+    </engines>
 
     <js-module src="www/iMatch.js" name="iMatch">
         <clobbers target="window.iMatch" />
@@ -50,7 +54,7 @@
             <uses-permission android:name="android.permission.BLUETOOTH"/>
             <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
             <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
-                tools:targetApi="s" />
+                android:usesPermissionFlags="neverForLocation" />
             <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
             <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
             <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />

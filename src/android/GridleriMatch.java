@@ -2,6 +2,8 @@ package com.gridler.imatch;
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothGatt;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.util.Base64;
 import android.util.Log;
 import org.apache.cordova.CallbackContext;
@@ -146,8 +148,34 @@ public class GridleriMatch extends CordovaPlugin {
     }
 
     private void Scan() {
-        checkPermissions();
+        String[] permissions = requiredPermissions();
+        if (!hasAllPermissions(permissions)) {
+            cordova.requestPermissions(this, REQUEST_CODE_ENABLE_PERMISSION, permissions);
+            return;
+        }
+        startScan();
+    }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode != REQUEST_CODE_ENABLE_PERMISSION) {
+            return;
+        }
+        boolean granted = grantResults.length > 0;
+        for (int result : grantResults) {
+            granted &= result == PackageManager.PERMISSION_GRANTED;
+        }
+        if (!granted) {
+            Log.e(TAG, "Bluetooth permission denied");
+            if (listCallbackContext != null) {
+                listCallbackContext.error("Bluetooth permission denied");
+            }
+            return;
+        }
+        startScan();
+    }
+
+    private void startScan() {
         UUID[] serviceUuids = new UUID[]{UUID.fromString(IMATCH_SPS_SERVICE)};
 
         BleManager.getInstance().init(cordova.getActivity().getApplication());
@@ -201,6 +229,13 @@ public class GridleriMatch extends CordovaPlugin {
 
     private boolean Connect(String imatchName) {
         if (imatchName.length() < 1) {
+            return false;
+        }
+
+        if (ScanResult == null) {
+            PluginResult pluginResult = new PluginResult(PluginResult.Status.ERROR, "Connect called before list");
+            pluginResult.setKeepCallback(true);
+            connectCallbackContext.sendPluginResult(pluginResult);
             return false;
         }
 
@@ -443,13 +478,11 @@ public class GridleriMatch extends CordovaPlugin {
         return true;
     }
 
-    private void checkPermissions()
-    {
-        String[] permissions = new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION};
-        if (!hasAllPermissions(permissions))
-        {
-            cordova.requestPermissions(this, REQUEST_CODE_ENABLE_PERMISSION, permissions);
+    private String[] requiredPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return new String[]{Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT};
         }
+        return new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION};
     }
 
 }
