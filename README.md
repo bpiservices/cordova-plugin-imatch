@@ -165,8 +165,9 @@ The JS API is identical on both platforms; the depth of document processing is n
 |---|---|---|
 | Access control, DG reading | on the phone via the iOS SDK (PACE, BAC, CA, AA) | on the iMatch via `mrtdread` (PACE with BAC fallback; chip authentication off in 2.0.0) |
 | `read_dg1` payload | parsed MRZ fields | `{ raw, mrz }` |
-| `read_dg2` payload | `{ image }` as JPEG | `{ raw, image, mimeType }`, image as found in the chip (JPEG, JP2 or PNG); decode JP2 with `cordova-plugin-jj2000` |
+| `read_dg2` payload | `{ image }` as JPEG | `{ raw, image, mimeType, sourceMimeType }`; `image` is always JPEG (JPEG 2000 and PNG are decoded on the phone), `raw` is the data group as read |
 | `read_sod`, other DGs | parsed | `{ raw }` base64 |
+| `read_photo` (smartcard) | as delivered by the SDK | `{ raw, image, mimeType, sourceMimeType }`, `image` always JPEG |
 | `validateComputedHashes` | passive authentication result | error, not available yet |
 | `access_control` event | `{ type, ... }` | `{ type, success, raw }` |
 | Firmware update | SDK updater | main firmware, then the MP1 second stage on iMatch 45/50 |

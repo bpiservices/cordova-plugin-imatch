@@ -2,6 +2,8 @@ package com.gridler.imatch;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Build;
 import android.util.Base64;
 import android.util.Log;
@@ -32,6 +34,7 @@ import com.gridler.imatchsdk.ImatchManager;
 import com.gridler.imatchsdk.ImatchNFCReader;
 import com.gridler.imatchsdk.ImatchSmartcardReader;
 import com.gridler.imatchsdk.FingerprintImage;
+import com.gemalto.jp2.JP2Decoder;
 
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
@@ -41,6 +44,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -815,7 +819,22 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
         if (BOARD_ONLY.contains(method)) {
             return;
         }
-        JSONObject payload = message(methodName(method), dataAsJson(data));
+        final JSONObject payload = message(methodName(method), dataAsJson(data));
+        if (method == Method.READ_PHOTO && data != null && !data.isEmpty()) {
+            final String photoData = data;
+            cordova.getThreadPool().execute(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        payload.put("data", photoResult(photoData));
+                    } catch (JSONException e) {
+                        Log.e(TAG, "read_photo: " + e.getMessage());
+                    }
+                    send(smartcardCallback, payload, true, true);
+                }
+            });
+            return;
+        }
         send(smartcardCallback, payload, method != Method.ERROR, true);
     }
 
@@ -915,16 +934,19 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
                     break;
                 }
                 case READ_DG2: {
-                    byte[] dg2 = Base64.decode(data, Base64.NO_WRAP);
-                    JSONObject result = new JSONObject().put("raw", data);
-                    int[] photo = locatePhoto(dg2);
-                    if (photo != null) {
-                        byte[] photoBytes = Arrays.copyOfRange(dg2, photo[0], dg2.length);
-                        result.put("image", Base64.encodeToString(photoBytes, Base64.NO_WRAP));
-                        result.put("mimeType", PHOTO_MIME_TYPES[photo[1]]);
-                    }
-                    payload.put("data", result);
-                    send(nfcCallback, payload, true, true);
+                    final JSONObject dg2Payload = payload;
+                    final String dg2Data = data;
+                    cordova.getThreadPool().execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                dg2Payload.put("data", photoResult(dg2Data));
+                                send(nfcCallback, dg2Payload, true, true);
+                            } catch (JSONException e) {
+                                Log.e(TAG, "read_dg2: " + e.getMessage());
+                            }
+                        }
+                    });
                     break;
                 }
                 case READ_ERROR:
@@ -956,6 +978,49 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
             {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A},
     };
     private static final String[] PHOTO_MIME_TYPES = {"image/jpeg", "image/jp2", "image/jp2", "image/png"};
+
+    private static JSONObject photoResult(String base64) throws JSONException {
+        byte[] bytes = Base64.decode(base64, Base64.NO_WRAP);
+        JSONObject result = new JSONObject().put("raw", base64);
+        int[] photo = locatePhoto(bytes);
+        if (photo == null) {
+            return result;
+        }
+        byte[] photoBytes = Arrays.copyOfRange(bytes, photo[0], bytes.length);
+        String sourceMimeType = PHOTO_MIME_TYPES[photo[1]];
+        result.put("sourceMimeType", sourceMimeType);
+        byte[] jpeg = toJpeg(photoBytes, sourceMimeType);
+        if (jpeg != null) {
+            result.put("image", Base64.encodeToString(jpeg, Base64.NO_WRAP));
+            result.put("mimeType", "image/jpeg");
+        } else {
+            result.put("image", Base64.encodeToString(photoBytes, Base64.NO_WRAP));
+            result.put("mimeType", sourceMimeType);
+            result.put("decodeError", "image could not be decoded");
+        }
+        return result;
+    }
+
+    private static byte[] toJpeg(byte[] photo, String mimeType) {
+        if ("image/jpeg".equals(mimeType)) {
+            return photo;
+        }
+        try {
+            Bitmap bitmap = "image/jp2".equals(mimeType)
+                    ? new JP2Decoder(photo).decode()
+                    : BitmapFactory.decodeByteArray(photo, 0, photo.length);
+            if (bitmap == null) {
+                return null;
+            }
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out);
+            bitmap.recycle();
+            return out.toByteArray();
+        } catch (Exception e) {
+            Log.e(TAG, "toJpeg: " + e.getMessage());
+            return null;
+        }
+    }
 
     private static int[] locatePhoto(byte[] dg2) {
         int bestIndex = -1;
