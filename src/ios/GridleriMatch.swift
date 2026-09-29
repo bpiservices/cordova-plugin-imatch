@@ -23,6 +23,8 @@ import iMatchSDK
     var imageType = ImageType.FLAT_TWO_FINGERS
     var segmentedFingers : Bool = true
     var calculateNFIQScore : Bool = true
+    var imageFormats : [String] = ["wsq"]
+    var lastImageFormat : String = "wsq"
     var nfcReader: iMatchNFCReader!
     var mrzkey: String = ""
     
@@ -268,6 +270,15 @@ import iMatchSDK
         if (command.arguments.count > 2) {
             self.calculateNFIQScore = getArgumentAsBool(command: command, index: 2)
         }
+
+        let allowed = ["wsq", "png", "bmp", "jpg2k"]
+        var formats: [String] = []
+        if command.arguments.count > 3, let requested = command.arguments[3] as? [String] {
+            for name in requested.map({ $0.lowercased() }) where allowed.contains(name) && !formats.contains(name) {
+                formats.append(name)
+            }
+        }
+        self.imageFormats = formats.isEmpty ? ["wsq"] : formats
 
         switch imageTypeParam {
         case "FLAT_SINGLE_FINGER":
@@ -650,6 +661,14 @@ import iMatchSDK
             case .FP_FINISHED :
                 sendPluginResult(message: resultMessage, callback: self.fingerprintCallbackId);
                 break;
+            case .FP_IMAGE_TYPE :
+                self.lastImageFormat = data.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                sendPluginResult(message: resultMessage, callback: self.fingerprintCallbackId);
+                break;
+            case .FP_IMAGE :
+                resultMessage["data"] = ["image": data, "format": self.lastImageFormat]
+                sendPluginResult(message: resultMessage, callback: self.fingerprintCallbackId);
+                break;
             default:
                 sendPluginResult(message: resultMessage, callback: self.fingerprintCallbackId);
                 break
@@ -743,7 +762,14 @@ import iMatchSDK
         }
         
         let params = FingerprintImageParameterBuilder()
-        params.wsq()
+        for format in self.imageFormats {
+            switch format {
+            case "png": params.png()
+            case "bmp": params.bmp()
+            case "jpg2k": params.jpg2k()
+            default: params.wsq()
+            }
+        }
 
         iMatchFingerprintReader.getInstance().enroll(
             imageType: self.imageType,

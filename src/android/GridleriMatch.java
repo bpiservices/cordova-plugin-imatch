@@ -19,7 +19,6 @@ import com.gridler.imatchlib.ImatchManagerListener;
 import com.gridler.imatchlib.ImatchNFCListener;
 import com.gridler.imatchlib.ImatchSmartCardListener;
 import com.gridler.imatchlib.Method;
-import com.gridler.imatchlib.SecondStageUpdateTaskWrapper;
 import com.gridler.imatchsdk.GaugeModel;
 import com.gridler.imatchsdk.GaugeUtils;
 import com.gridler.imatchsdk.ILVAsyncMessage;
@@ -119,6 +118,8 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
     private CallbackContext nfcCallback;
     private CallbackContext statusCallback;
     private CallbackContext infoCallback;
+    private final List<CallbackContext> pendingHardwareCallbacks = new ArrayList<>();
+    private final List<CallbackContext> pendingUpdateCallbacks = new ArrayList<>();
     private CallbackContext updateCallback;
 
     private boolean initialized;
@@ -127,10 +128,13 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
     private boolean isUpdating;
     private int updateMax;
     private int lastUpdatePercent = -1;
+    private String lastUpdateAction;
 
     private ImageType imageType = ImageType.FLAT_TWO_FINGERS;
     private boolean segmentedFingers;
     private boolean calculateNfiq;
+    private List<String> imageFormats = Collections.singletonList("wsq");
+    private String lastImageFormat = "wsq";
     private boolean enrollPending;
     private boolean fap20Pending;
 
@@ -159,7 +163,7 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
             case "cancelUpdate": cancelUpdate(callback); return true;
             case "powerOnFingerprint": powerOnFingerprint(callback); return true;
             case "powerOffFingerprint": powerOffFingerprint(args.optBoolean(0, false), callback); return true;
-            case "scanFingerprint": scanFingerprint(args.optString(0, ""), args.optBoolean(1, false), args.optBoolean(2, false), callback); return true;
+            case "scanFingerprint": scanFingerprint(args.optString(0, ""), args.optBoolean(1, false), args.optBoolean(2, false), args.optJSONArray(3), callback); return true;
             case "scanFingerprintFAP20": scanFingerprintFAP20(callback); return true;
             case "powerOnSmartcard": smartcardCallback = callback; requireSmartcard().powerReaderOn(""); keepAlive(callback); return true;
             case "powerOffSmartcard": requireSmartcard().powerReaderOff(); send(callback, message("poweroff smartcard", null), true, false); return true;
@@ -342,9 +346,12 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
                 statusCallback = null;
             }
         }
-        if (method == Method.INFO && infoCallback != null) {
-            send(infoCallback, payload, true, false);
-            infoCallback = null;
+        if (method == Method.INFO) {
+            if (infoCallback != null) {
+                send(infoCallback, payload, true, false);
+                infoCallback = null;
+            }
+            flushDeviceInfoCallbacks();
         }
         send(eventListener, payload, true, true);
     }
@@ -375,23 +382,54 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
 
     // ---------------------------------------------------------------- device
 
-    private void hardwareVersion(final CallbackContext callback) {
+    private void hardwareVersion(CallbackContext callback) {
         ensureInitialized();
+        if (device.GetHardwareVersion() != null || !device.Connected()) {
+            send(callback, message("hardwareversion", hardwareName(device.GetHardwareVersion())), true, false);
+            return;
+        }
+        awaitDeviceInfo(pendingHardwareCallbacks, callback);
+    }
+
+    private void awaitDeviceInfo(final List<CallbackContext> pending, CallbackContext callback) {
+        synchronized (pending) {
+            pending.add(callback);
+        }
+        device.RequestDeviceInfo();
         cordova.getThreadPool().execute(new Runnable() {
             @Override
             public void run() {
-                HardwareVersion hardware = device.GetHardwareVersion();
-                if (hardware == null && device.Connected()) {
-                    try {
-                        device.SendWithResponse(Device.Board, Method.INFO, "", INFO_TIMEOUT_MS);
-                    } catch (Exception e) {
-                        Log.w(TAG, "hardwareVersion: info request failed: " + e.getMessage());
-                    }
-                    hardware = device.GetHardwareVersion();
+                try {
+                    Thread.sleep(INFO_TIMEOUT_MS);
+                } catch (InterruptedException ignored) {
+                    return;
                 }
-                send(callback, message("hardwareversion", hardwareName(hardware)), true, false);
+                flushDeviceInfoCallbacks();
             }
         });
+    }
+
+    private void flushDeviceInfoCallbacks() {
+        List<CallbackContext> hardware;
+        List<CallbackContext> update;
+        synchronized (pendingHardwareCallbacks) {
+            hardware = new ArrayList<>(pendingHardwareCallbacks);
+            pendingHardwareCallbacks.clear();
+        }
+        synchronized (pendingUpdateCallbacks) {
+            update = new ArrayList<>(pendingUpdateCallbacks);
+            pendingUpdateCallbacks.clear();
+        }
+        for (CallbackContext callback : hardware) {
+            send(callback, message("hardwareversion", hardwareName(device.GetHardwareVersion())), true, false);
+        }
+        for (CallbackContext callback : update) {
+            try {
+                sendNeedsUpdate(callback);
+            } catch (JSONException e) {
+                Log.e(TAG, "needsUpdate: " + e.getMessage());
+            }
+        }
     }
 
     private static String hardwareName(HardwareVersion hardware) {
@@ -445,6 +483,15 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
     private void needsUpdate(CallbackContext callback) throws JSONException {
         ensureInitialized();
         String installed = device.GetFirmwareVersion();
+        if ((installed == null || installed.isEmpty()) && device.Connected()) {
+            awaitDeviceInfo(pendingUpdateCallbacks, callback);
+            return;
+        }
+        sendNeedsUpdate(callback);
+    }
+
+    private void sendNeedsUpdate(CallbackContext callback) throws JSONException {
+        String installed = device.GetFirmwareVersion();
         String available = device.GetSdkFirmwareVersion(cordova.getContext());
         boolean required = false;
         if (installed != null && !installed.isEmpty()) {
@@ -470,29 +517,12 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
         updateCallback = callback;
         lastUpdatePercent = -1;
         updateMax = device.GetSdkFirmwareSize(cordova.getContext());
-        final boolean secondStage = fingerprintReaderCanSleep();
+        lastUpdateAction = null;
 
-        final FirmwareUpdateResponse secondStageResponse = new FirmwareUpdateResponse() {
-            @Override public void updateProgress(int progress, String file) { reportUpdateProgress(progress, file, false); }
-            @Override public void updateCompleted() { finishUpdate(); }
-            @Override public void updateFailed(Exception e) { failUpdate(e); }
-            @Override public void restart(int restartTicks) { updateMax = restartTicks; }
-        };
+        // FirmwareUpdateTask runs the MP1 second stage itself on iMatch 45/50 and reports completion after it.
         final FirmwareUpdateResponse firmwareResponse = new FirmwareUpdateResponse() {
             @Override public void updateProgress(int progress, String file) { reportUpdateProgress(progress, file, false); }
-            @Override public void updateCompleted() {
-                if (!secondStage) {
-                    finishUpdate();
-                    return;
-                }
-                updateMax = 100;
-                cordova.getActivity().runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        SecondStageUpdateTaskWrapper.getInstance().initializeSecondStageUpdate(cordova.getActivity(), secondStageResponse, false);
-                    }
-                });
-            }
+            @Override public void updateCompleted() { finishUpdate(); }
             @Override public void updateFailed(Exception e) { failUpdate(e); }
             @Override public void restart(int restartTicks) { updateMax = restartTicks; }
         };
@@ -506,11 +536,17 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
     }
 
     private void reportUpdateProgress(int progress, String action, boolean completed) {
+        // The second stage reports byte offsets without announcing a maximum; grow it so the bar never sticks at 100.
+        if (progress > updateMax) {
+            updateMax = progress * 2;
+        }
         int percent = updateMax > 0 ? Math.min(100, (int) ((long) progress * 100 / updateMax)) : 0;
-        if (percent == lastUpdatePercent && !completed) {
+        boolean sameAction = action == null ? lastUpdateAction == null : action.equals(lastUpdateAction);
+        if (percent == lastUpdatePercent && sameAction && !completed) {
             return;
         }
         lastUpdatePercent = percent;
+        lastUpdateAction = action;
         try {
             send(updateCallback, message("update", new JSONObject()
                     .put("progress", percent)
@@ -540,7 +576,6 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
 
     private void cancelUpdate(CallbackContext callback) {
         FirmwareUpdateTaskWrapper.getInstance().cancelUpdate();
-        SecondStageUpdateTaskWrapper.getInstance().cancelUpdate();
         isUpdating = false;
         send(callback, message("cancel_update", null), true, false);
     }
@@ -573,11 +608,12 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
         send(callback, message("poweroff finger", null), true, false);
     }
 
-    private void scanFingerprint(String imageTypeName, boolean segmented, boolean nfiq, CallbackContext callback) {
+    private void scanFingerprint(String imageTypeName, boolean segmented, boolean nfiq, JSONArray formats, CallbackContext callback) {
         ensureInitialized();
         fingerprintCallback = callback;
         segmentedFingers = segmented;
         calculateNfiq = nfiq;
+        imageFormats = parseImageFormats(formats);
         switch (imageTypeName) {
             case "FLAT_SINGLE_FINGER": imageType = ImageType.FLAT_SINGLE_FINGER; break;
             case "FLAT_FOUR_FINGERS": imageType = ImageType.FLAT_FOUR_FINGERS; break;
@@ -599,8 +635,29 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
     }
 
     private void enroll() {
-        ImatchFPImageParameterBuilder params = new ImatchFPImageParameterBuilder().wsq();
+        ImatchFPImageParameterBuilder params = new ImatchFPImageParameterBuilder();
+        for (String format : imageFormats) {
+            switch (format) {
+                case "png": params.png(); break;
+                case "bmp": params.bmp(); break;
+                case "jpg2k": params.jpg2k(); break;
+                default: params.wsq(); break;
+            }
+        }
         fingerprintReader.enroll(imageType, calculateNfiq, 0, segmentedFingers, params, false, FingerType.NONE);
+    }
+
+    private static List<String> parseImageFormats(JSONArray formats) {
+        List<String> result = new ArrayList<>();
+        if (formats != null) {
+            for (int i = 0; i < formats.length(); i++) {
+                String format = formats.optString(i, "").toLowerCase();
+                if (Arrays.asList("wsq", "png", "bmp", "jpg2k").contains(format) && !result.contains(format)) {
+                    result.add(format);
+                }
+            }
+        }
+        return result.isEmpty() ? Collections.singletonList("wsq") : result;
     }
 
     private void scanFingerprintFAP20(CallbackContext callback) {
@@ -675,6 +732,14 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
                 } catch (NumberFormatException ignored) {
                     // keep the raw string
                 }
+                send(fingerprintCallback, payload, true, true);
+                break;
+            case FP_IMAGE_TYPE:
+                lastImageFormat = data.trim().toLowerCase();
+                send(fingerprintCallback, payload, true, true);
+                break;
+            case FP_IMAGE:
+                payload.put("data", new JSONObject().put("image", data).put("format", lastImageFormat));
                 send(fingerprintCallback, payload, true, true);
                 break;
             default:
@@ -768,7 +833,7 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
         ensureInitialized();
         nfcCallback = callback;
         lastEfcom = null;
-        String key = mrz.replaceAll("\\s+", "");
+        String key = bacKey(mrz);
         if (key.isEmpty()) {
             send(callback, message("error", new JSONObject().put("code", 400).put("message", "MRZ is required")), false, false);
             return;
@@ -776,6 +841,33 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
         // mrz, bypassPace, checkMac, includeHeaders, chipAuthentication
         device.Send(Device.NfcReader, Method.MRTD_READ, key + ",0,1,1,0");
         keepAlive(callback);
+    }
+
+    static String bacKey(String mrz) {
+        List<String> lines = new ArrayList<>();
+        for (String line : mrz.split("\\r?\\n")) {
+            String clean = line.replaceAll("\\s+", "");
+            if (!clean.isEmpty()) {
+                lines.add(clean);
+            }
+        }
+        if (lines.size() >= 3) {
+            return lines.get(0) + lines.get(1);
+        }
+        if (lines.size() == 2) {
+            return lines.get(1);
+        }
+        String flat = lines.isEmpty() ? "" : lines.get(0);
+        if (flat.length() == 88) {
+            return flat.substring(44);
+        }
+        if (flat.length() == 72) {
+            return flat.substring(36);
+        }
+        if (flat.length() == 90) {
+            return flat.substring(0, 60);
+        }
+        return flat;
     }
 
     private void getEFCOMItems(CallbackContext callback) {

@@ -98,13 +98,13 @@ iMatch.hardwareVersion(function (hw) {
     if (hw.data === 'iMatch20') {
         iMatch.scanFingerprintFAP20(onFingerEvent, console.error);
     } else {
-        iMatch.scanFingerprint('FLAT_TWO_FINGERS', false, true, onFingerEvent, console.error);
+        iMatch.scanFingerprint('FLAT_TWO_FINGERS', false, true, onFingerEvent, console.error, ['WSQ', 'PNG']);
     }
 });
 
 function onFingerEvent(msg) {
     switch (msg.method) {
-        case 'fp_image':    /* msg.data.image is base64 */ break;
+        case 'fp_image':    /* msg.data.image is base64, msg.data.format is 'wsq' or 'png' */ break;
         case 'fp_nfiq':     /* quality score per finger */ break;
         case 'fp_finished': iMatch.powerOffFingerprint(true); break;
     }
@@ -116,7 +116,8 @@ function onFingerEvent(msg) {
 ### Documents (NFC)
 
 ```js
-iMatch.scanPassport(mrzLine1 + mrzLine2, function (msg) {
+iMatch.scanPassport(mrzLine1 + '
+' + mrzLine2, function (msg) {
     // access_control, read_efcom, read_sod, read_dg1, read_dg2 (msg.data.image is a JPEG), ...
 }, console.error);
 ```
@@ -147,7 +148,7 @@ iMatch.readSmartcard(function (msg) { /* read_card, read_id, read_person, read_p
 | `update(progress, error)` | progress until `completed` |
 | `cancelUpdate(success)` | |
 | `powerOnFingerprint`, `powerOffFingerprint(tryStandby)` | |
-| `scanFingerprint(imageType, segmented, calculateNFIQ, success, error)` | iMatch 45/50 |
+| `scanFingerprint(imageType, segmented, calculateNFIQ, success, error, imageFormats?)` | iMatch 45/50; `imageFormats` defaults to `['WSQ']`, one `fp_image` per format |
 | `scanFingerprintFAP20(success, error)` | iMatch 20 |
 | `powerOnSmartcard`, `powerOffSmartcard`, `readSmartcard` | |
 | `powerOnNFC`, `powerOffNFC`, `scanPassport(mrz, success, error)` | |

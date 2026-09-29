@@ -17,6 +17,8 @@ declare namespace IMatch {
         | 'FLAT_FOUR_FINGERS'
         | 'ROLL_SINGLE_FINGER';
 
+    type FingerprintImageFormat = 'WSQ' | 'PNG' | 'BMP' | 'JPG2K';
+
     type Device = 'sys' | 'fpr' | 'scr' | 'nfc';
 
     interface ConnectResult {
@@ -59,6 +61,7 @@ declare namespace IMatch {
 
     interface FingerprintImage {
         image: string;
+        format?: string;
         image_height?: number;
         image_width?: number;
         [key: string]: any;
@@ -92,7 +95,8 @@ declare namespace IMatch {
             segmented: boolean,
             calculateNFIQ: boolean,
             success: SuccessCallback<FingerprintImage | any>,
-            error?: ErrorCallback
+            error?: ErrorCallback,
+            imageFormats?: FingerprintImageFormat[]
         ): void;
         scanFingerprintFAP20(success: SuccessCallback, error?: ErrorCallback): void;
 

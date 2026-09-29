@@ -31,8 +31,8 @@ var iMatch = {
     // Fingerprint reader
     powerOnFingerprint: function (success, error) { call('powerOnFingerprint', [], success, error); },
     powerOffFingerprint: function (tryStandby, success, error) { call('powerOffFingerprint', [!!tryStandby], success, error); },
-    scanFingerprint: function (imageType, segmented, calculateNFIQ, success, error) {
-        call('scanFingerprint', [imageType, !!segmented, !!calculateNFIQ], success, error);
+    scanFingerprint: function (imageType, segmented, calculateNFIQ, success, error, imageFormats) {
+        call('scanFingerprint', [imageType, !!segmented, !!calculateNFIQ, imageFormats || ['WSQ']], success, error);
     },
     scanFingerprintFAP20: function (success, error) { call('scanFingerprintFAP20', [], success, error); },
 
