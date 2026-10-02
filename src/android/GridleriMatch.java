@@ -1,10 +1,15 @@
 package com.gridler.imatch;
 
 import android.Manifest;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothManager;
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Base64;
 import android.util.Log;
 
@@ -62,7 +67,10 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
     private static final String TAG = "GridleriMatch";
     private static final int PERMISSION_REQUEST = 55433;
     private static final int SCAN_TIMEOUT_MS = 2000;
+    private static final int SCAN_GRACE_MS = 3000;
     private static final int INFO_TIMEOUT_MS = 2000;
+    private static final int CONNECT_TIMEOUT_MS = 30000;
+    private static final int UPDATE_INFO_TIMEOUT_MS = 10000;
 
     private static final Map<Method, String> METHOD_NAMES = new HashMap<>();
     static {
@@ -112,7 +120,9 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
     private ImatchSmartcardReader smartcardReader;
     private ImatchNFCReader nfcReader;
 
-    private CallbackContext listCallback;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    private final List<CallbackContext> pendingListCallbacks = new ArrayList<>();
     private CallbackContext connectCallback;
     private CallbackContext disconnectCallback;
     private CallbackContext disconnectHandler;
@@ -127,9 +137,15 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
     private CallbackContext updateCallback;
 
     private boolean initialized;
+    private volatile boolean scanning;
+    private volatile int scanAttempt;
+    private volatile boolean connectPending;
+    private volatile int connectAttempt;
     private boolean disconnectRequested;
     private boolean lastCharging;
-    private boolean isUpdating;
+    private volatile boolean isUpdating;
+    private volatile boolean updateAwaitingInfo;
+    private volatile int updateAttempt;
     private int updateMax;
     private int lastUpdatePercent = -1;
     private String lastUpdateAction;
@@ -235,13 +251,59 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
 
     private void list(CallbackContext callback) {
         ensureInitialized();
-        listCallback = callback;
+        synchronized (pendingListCallbacks) {
+            pendingListCallbacks.add(callback);
+        }
         String[] permissions = requiredPermissions();
         if (!hasAllPermissions(permissions)) {
             cordova.requestPermissions(this, PERMISSION_REQUEST, permissions);
             return;
         }
+        startScan();
+    }
+
+    private synchronized void startScan() {
+        if (scanning) {
+            // The running scan answers every waiting list call.
+            return;
+        }
+        if (!bluetoothEnabled()) {
+            failList("Bluetooth is not enabled");
+            return;
+        }
+        scanning = true;
+        final int attempt = ++scanAttempt;
         manager.Scan(SCAN_TIMEOUT_MS);
+        // The SDK stays silent when a scan cannot start, so give up after a while.
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (scanning && attempt == scanAttempt) {
+                    scanning = false;
+                    failList("Scan did not finish, please try again");
+                }
+            }
+        }, SCAN_TIMEOUT_MS + SCAN_GRACE_MS);
+    }
+
+    private boolean bluetoothEnabled() {
+        BluetoothManager bluetoothManager = (BluetoothManager) cordova.getActivity().getSystemService(Context.BLUETOOTH_SERVICE);
+        BluetoothAdapter adapter = bluetoothManager == null ? null : bluetoothManager.getAdapter();
+        return adapter != null && adapter.isEnabled();
+    }
+
+    private List<CallbackContext> takeListCallbacks() {
+        synchronized (pendingListCallbacks) {
+            List<CallbackContext> callbacks = new ArrayList<>(pendingListCallbacks);
+            pendingListCallbacks.clear();
+            return callbacks;
+        }
+    }
+
+    private void failList(String text) {
+        for (CallbackContext callback : takeListCallbacks()) {
+            sendError(callback, "list", text);
+        }
     }
 
     @Override
@@ -254,24 +316,27 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
             granted &= result == PackageManager.PERMISSION_GRANTED;
         }
         if (!granted) {
-            sendError(listCallback, "list", "Bluetooth permission denied");
+            failList("Bluetooth permission denied");
             return;
         }
-        manager.Scan(SCAN_TIMEOUT_MS);
+        startScan();
     }
 
     @Override
     public void onScanResult(Map<String, String> scanResult) {
-        try {
-            List<String> names = new ArrayList<>(scanResult.keySet());
-            Collections.sort(names);
-            if (names.isEmpty()) {
-                send(listCallback, message("list", new JSONObject().put("message", "No iMatch found, please try again")), false, false);
-            } else {
-                send(listCallback, message("list", new JSONArray(names)), true, false);
+        scanning = false;
+        List<String> names = new ArrayList<>(scanResult.keySet());
+        Collections.sort(names);
+        for (CallbackContext callback : takeListCallbacks()) {
+            try {
+                if (names.isEmpty()) {
+                    send(callback, message("list", new JSONObject().put("message", "No iMatch found, please try again")), false, false);
+                } else {
+                    send(callback, message("list", new JSONArray(names)), true, false);
+                }
+            } catch (JSONException e) {
+                sendError(callback, "list", e.getMessage());
             }
-        } catch (JSONException e) {
-            sendError(listCallback, "list", e.getMessage());
         }
     }
 
@@ -279,6 +344,7 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
         ensureInitialized();
         connectCallback = callback;
         disconnectRequested = false;
+        connectPending = false;
         if (name.isEmpty()) {
             send(callback, message("connect", new JSONObject().put("connected", false).put("message", "No device name given")), false, false);
             return;
@@ -287,12 +353,35 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
             send(callback, message("connect", new JSONObject().put("connected", false).put("message", "Call list before connect")), false, false);
             return;
         }
-        boolean started = device.Connect(name);
-        if (started) {
-            send(callback, message("connect", new JSONObject().put("connected", true)), true, true);
-        } else {
-            send(callback, message("connect", new JSONObject().put("connected", false).put("message", "Connection failed")), false, false);
+        connectPending = true;
+        final int attempt = ++connectAttempt;
+        if (!device.Connect(name)) {
+            failConnect("Connection failed");
+            return;
         }
+        // Connect only starts the link, so the result is sent from onConnectionChange.
+        keepAlive(callback);
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (connectPending && attempt == connectAttempt) {
+                    failConnect("Connection timed out");
+                    if (device.Connected()) {
+                        device.Disconnect();
+                    }
+                }
+            }
+        }, CONNECT_TIMEOUT_MS);
+    }
+
+    private void failConnect(String text) {
+        connectPending = false;
+        try {
+            send(connectCallback, message("connect", new JSONObject().put("connected", false).put("message", text)), false, false);
+        } catch (JSONException e) {
+            sendError(connectCallback, "connect", text);
+        }
+        connectCallback = null;
     }
 
     private void disconnect(CallbackContext callback) throws JSONException {
@@ -315,7 +404,13 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
     public void onConnectionChange(Boolean connected) {
         try {
             JSONObject payload = message("connectionchange", new JSONObject().put("connected", connected));
-            send(connectCallback, payload, true, true);
+            if (connectPending && connected) {
+                // First link up after connect, so answer the connect call itself.
+                connectPending = false;
+                send(connectCallback, message("connect", new JSONObject().put("connected", true)), true, true);
+            } else {
+                send(connectCallback, payload, true, true);
+            }
             if (connected) {
                 device.RequestDeviceInfo();
                 device.RequestStatus();
@@ -351,6 +446,7 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
             }
         }
         if (method == Method.INFO) {
+            updateAwaitingInfo = false;
             if (infoCallback != null) {
                 send(infoCallback, payload, true, false);
                 infoCallback = null;
@@ -373,13 +469,22 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
     @Override
     public void onError(int code, String message) {
         Log.e(TAG, "onError " + code + ": " + message);
+        if (code == 201 && connectPending) {
+            failConnect(message);
+            return;
+        }
         if (code == 201 && connectCallback != null) {
             send(connectCallback, errorMessage(code, message), false, true);
             return;
         }
-        if (listCallback != null && code == 901) {
-            send(listCallback, errorMessage(code, message), false, false);
-            return;
+        if (code == 901) {
+            List<CallbackContext> callbacks = takeListCallbacks();
+            for (CallbackContext callback : callbacks) {
+                send(callback, errorMessage(code, message), false, false);
+            }
+            if (!callbacks.isEmpty()) {
+                return;
+            }
         }
         send(eventListener, errorMessage(code, message), false, true);
     }
@@ -389,28 +494,37 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
     private void hardwareVersion(CallbackContext callback) {
         ensureInitialized();
         if (device.GetHardwareVersion() != null || !device.Connected()) {
-            send(callback, message("hardwareversion", hardwareName(device.GetHardwareVersion())), true, false);
+            sendHardwareVersion(callback);
             return;
         }
         awaitDeviceInfo(pendingHardwareCallbacks, callback);
     }
 
-    private void awaitDeviceInfo(final List<CallbackContext> pending, CallbackContext callback) {
+    private void sendHardwareVersion(CallbackContext callback) {
+        send(callback, message("hardwareversion", hardwareName(device.GetHardwareVersion())), true, false);
+    }
+
+    private void awaitDeviceInfo(final List<CallbackContext> pending, final CallbackContext callback) {
         synchronized (pending) {
             pending.add(callback);
         }
         device.RequestDeviceInfo();
-        cordova.getThreadPool().execute(new Runnable() {
+        // Each call gets its own deadline and only answers itself when it passes.
+        mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                try {
-                    Thread.sleep(INFO_TIMEOUT_MS);
-                } catch (InterruptedException ignored) {
-                    return;
+                synchronized (pending) {
+                    if (!pending.remove(callback)) {
+                        return;
+                    }
                 }
-                flushDeviceInfoCallbacks();
+                if (pending == pendingHardwareCallbacks) {
+                    sendHardwareVersion(callback);
+                } else {
+                    sendNeedsUpdateOrLog(callback);
+                }
             }
-        });
+        }, INFO_TIMEOUT_MS);
     }
 
     private void flushDeviceInfoCallbacks() {
@@ -425,14 +539,18 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
             pendingUpdateCallbacks.clear();
         }
         for (CallbackContext callback : hardware) {
-            send(callback, message("hardwareversion", hardwareName(device.GetHardwareVersion())), true, false);
+            sendHardwareVersion(callback);
         }
         for (CallbackContext callback : update) {
-            try {
-                sendNeedsUpdate(callback);
-            } catch (JSONException e) {
-                Log.e(TAG, "needsUpdate: " + e.getMessage());
-            }
+            sendNeedsUpdateOrLog(callback);
+        }
+    }
+
+    private void sendNeedsUpdateOrLog(CallbackContext callback) {
+        try {
+            sendNeedsUpdate(callback);
+        } catch (JSONException e) {
+            Log.e(TAG, "needsUpdate: " + e.getMessage());
         }
     }
 
@@ -517,7 +635,13 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
             send(callback, message("update", new JSONObject().put("error", "update in progress")), false, false);
             return;
         }
+        if (!device.Connected()) {
+            send(callback, message("update", new JSONObject().put("error", "not connected")), false, false);
+            return;
+        }
         isUpdating = true;
+        updateAwaitingInfo = true;
+        final int attempt = ++updateAttempt;
         updateCallback = callback;
         lastUpdatePercent = -1;
         updateMax = device.GetSdkFirmwareSize(cordova.getContext());
@@ -537,6 +661,17 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
                 FirmwareUpdateTaskWrapper.getInstance().initializeFirmwareUpdate(cordova.getActivity(), firmwareResponse, false);
             }
         });
+
+        // The SDK waits for the device info without a deadline, so stop the update when none arrives.
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (isUpdating && updateAwaitingInfo && attempt == updateAttempt) {
+                    FirmwareUpdateTaskWrapper.getInstance().cancelUpdate();
+                    failUpdate(new Exception("No response from the iMatch"));
+                }
+            }
+        }, UPDATE_INFO_TIMEOUT_MS);
     }
 
     private void reportUpdateProgress(int progress, String action, boolean completed) {
@@ -580,7 +715,10 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
 
     private void cancelUpdate(CallbackContext callback) {
         FirmwareUpdateTaskWrapper.getInstance().cancelUpdate();
-        isUpdating = false;
+        if (isUpdating) {
+            // A cancelled SDK task reports nothing, so close the progress callback here.
+            failUpdate(new Exception("update cancelled"));
+        }
         send(callback, message("cancel_update", null), true, false);
     }
 
