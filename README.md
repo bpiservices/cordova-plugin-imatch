@@ -63,7 +63,7 @@ iOS: `NSBluetoothAlwaysUsageDescription` and `NSBluetoothPeripheralUsageDescript
 
 All calls take `(...args, success, error)` callbacks. Every callback, success or error, receives a message object `{ method, data }`. Long-lived callbacks (`connect`, `setDisconnectHandler`, `setReceiveEventListener`, `scanFingerprint`, `scanPassport`, `update`) fire more than once.
 
-`connect` answers with `{ method: 'connect', data: { connected: true } }` once the Bluetooth link is up, or calls the error callback when the connection fails or takes longer than 30 seconds. Later changes arrive on the same callback as `connectionchange`.
+`connect` answers with `{ method: 'connect', data: { connected: true } }` once the Bluetooth link is up, or calls the error callback when the connection fails or takes longer than 30 seconds. Later changes arrive on the same callback as `connectionchange`. Both carry `data.connected`, so checking that one field on every call is enough.
 
 ```js
 document.addEventListener('deviceready', function () {
