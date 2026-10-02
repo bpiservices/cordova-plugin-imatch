@@ -631,21 +631,6 @@ import iMatchSDK
         }
     }
 
-    // ImatchDeviceDelegate methods
-    func didConnect() {
-        print("didConnect")
-        let resultMessage = createMessage(method: "connect", data: true)
-        sendPluginResult(message: resultMessage, callback: self.callbackId);
-        sendPluginResult(message: resultMessage, callback: self.connectCallbackId);
-    }
-
-    func didDisconnect() {
-        print("didDisconnect")
-        let resultMessage = createMessage(method: "disconnect", data: true)
-        sendPluginResult(message: resultMessage, callback: self.callbackId, keep: false);
-        sendPluginResult(message: resultMessage, callback: self.connectCallbackId, keep: false);
-    }
-
     func onError(message: String) {
         print("onError: " + message)
         let resultMessage = createMessage(method: "error", data: message)
