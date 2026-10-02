@@ -61,7 +61,9 @@ iOS: `NSBluetoothAlwaysUsageDescription` and `NSBluetoothPeripheralUsageDescript
 
 ## Usage
 
-All calls take `(...args, success, error)` callbacks. Every callback receives a message object `{ method, data }`. Long-lived callbacks (`connect`, `setDisconnectHandler`, `setReceiveEventListener`, `scanFingerprint`, `scanPassport`, `update`) fire more than once.
+All calls take `(...args, success, error)` callbacks. Every callback, success or error, receives a message object `{ method, data }`. Long-lived callbacks (`connect`, `setDisconnectHandler`, `setReceiveEventListener`, `scanFingerprint`, `scanPassport`, `update`) fire more than once.
+
+`connect` answers with `{ method: 'connect', data: { connected: true } }` once the Bluetooth link is up, or calls the error callback when the connection fails or takes longer than 30 seconds. Later changes arrive on the same callback as `connectionchange`. Both carry `data.connected`, so checking that one field on every call is enough.
 
 ```js
 document.addEventListener('deviceready', function () {
@@ -133,8 +135,8 @@ iMatch.readSmartcard(function (msg) { /* read_card, read_id, read_person, read_p
 | Method | Notes |
 |---|---|
 | `initialize(success, error)` | call once after `deviceready` |
-| `list(success, error)` | `data` is an array of device names |
-| `connect(name, success, error)` | kept alive, also reports connection changes |
+| `list(success, error)` | `data` is an array of device names; error when Bluetooth is off |
+| `connect(name, success, error)` | answers when the link is up; kept alive, also reports connection changes |
 | `disconnect(success, error)` | |
 | `connected(success, error)` | |
 | `setDisconnectHandler(handler)` | |
@@ -145,8 +147,8 @@ iMatch.readSmartcard(function (msg) { /* read_card, read_id, read_person, read_p
 | `isCharging(success, error)` | last known charging state |
 | `write(data, success, error)` | raw JSON-RPC message |
 | `needsUpdate(success, error)` | |
-| `update(progress, error)` | progress until `completed` |
-| `cancelUpdate(success)` | |
+| `update(progress, error)` | progress until `completed`; needs a connected iMatch |
+| `cancelUpdate(success)` | the `update` error callback gets the final event |
 | `powerOnFingerprint`, `powerOffFingerprint(tryStandby)` | |
 | `scanFingerprint(imageType, segmented, calculateNFIQ, success, error, imageFormats?)` | iMatch 45/50; `imageFormats` defaults to `['WSQ']`, one `fp_image` per format |
 | `scanFingerprintFAP20(success, error)` | iMatch 20 |

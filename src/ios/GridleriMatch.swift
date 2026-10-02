@@ -10,13 +10,14 @@ import iMatchSDK
     var listCallbackId: String = "";
     var connectCallbackId: String = "";
     var disconnectCallbackId: String = "";
+    var disconnectHandlerCallbackId: String = "";
     var requestStatusCallbackId: String = "";
     var requestDeviceInfoCallbackId: String = "";
     var lastInfoMessage: [String:Any] = [:];
     
-    var imatchDeviceName: String!
+    var imatchDeviceName: String = ""
     var im: iMatchManager!
-    var imatchDevice: iMatchDevice!
+    lazy var imatchDevice: iMatchDevice = iMatchDevice.getInstance()
     var fingerprintReader: iMatchFingerprintReader!
     var smartcardReader: iMatchSmartcardReader!
 
@@ -25,7 +26,7 @@ import iMatchSDK
     var calculateNFIQScore : Bool = true
     var imageFormats : [String] = ["wsq"]
     var lastImageFormat : String = "wsq"
-    var nfcReader: iMatchNFCReader!
+    lazy var nfcReader: iMatchNFCReader = iMatchNFCReader.getInstance()
     var mrzkey: String = ""
     
     var sod: Sod?
@@ -34,12 +35,16 @@ import iMatchSDK
     var dg14: EFDataGroup14?
     var dg15: EFDataGroup15?
     
-    var updater: iMatchUpdater?
+    lazy var updater: iMatchUpdater = iMatchUpdater()
     var isUpdating = false;
     
     private var accessControl: String?
     private var allowedDatagroups: [MRTDtag]?
     private var lastChargingState: Bool = false
+    private var delegatesRegistered = false
+    private var connectPending = false
+    private var connectAttempt = 0
+    private let connectTimeoutInSeconds = 30.0
     
     func reset() {
         self.sod = nil
@@ -78,34 +83,61 @@ import iMatchSDK
 
     @objc(connect:) func connect(command: CDVInvokedUrlCommand) {
         print("Connecting")
+        self.reset()
         self.connectCallbackId = command.callbackId
-        self.imatchDeviceName = command.arguments[0] as? String
-        print("Connecting to: " + self.imatchDeviceName)
+        self.connectPending = false
 
-        self.imatchDevice = iMatchDevice.getInstance()
+        guard command.arguments.count > 0, let deviceName = command.arguments[0] as? String, !deviceName.isEmpty else {
+            self.failConnect("No device name given")
+            return
+        }
+        self.imatchDeviceName = deviceName
+        print("Connecting to: " + deviceName)
+
+        self.registerDeviceDelegates()
+        self.connectPending = true
+        self.connectAttempt += 1
+        let attempt = self.connectAttempt
+
+        if (!self.imatchDevice.connect(deviceName)) {
+            self.failConnect("Connection failed")
+            return
+        }
+
+        // connect only starts the link, so the result is sent from onConnectionChange.
+        DispatchQueue.main.asyncAfter(deadline: .now() + self.connectTimeoutInSeconds) { [weak self] in
+            guard let plugin = self, plugin.connectPending, attempt == plugin.connectAttempt else { return }
+            plugin.failConnect("Connection timed out")
+        }
+    }
+
+    private func failConnect(_ text: String) {
+        self.connectPending = false
+        let message = createMessage(method: "connect", data: ["connected" : false, "message": text])
+        sendPluginResult(message: message, callback: self.connectCallbackId, ok: false, keep: false);
+        self.connectCallbackId = "";
+    }
+
+    private func registerDeviceDelegates() {
+        // The SDK keeps every delegate it is given, so add this plugin only once.
+        if (self.delegatesRegistered) {
+            return
+        }
+        self.delegatesRegistered = true
         self.imatchDevice.addDelegate(device: Device.Board, delegate: self)
         self.imatchDevice.addDelegate(device: Device.NfcReader, delegate: self)
-        let connected = self.imatchDevice.connect(self.imatchDeviceName)
-
-        if connected {
-            let message = createMessage(method: "connect", data: ["connected" : true])
-            sendPluginResult(message: message, callback: self.connectCallbackId);
-        } else {
-            let message = createMessage(method: "connect", data: ["connected" : false, "message": "Connection failed"])
-            sendPluginResult(message: message, callback: self.connectCallbackId, ok: false);
-        }
-        self.reset()
     }
 
     @objc(disconnect:) func disconnect(command: CDVInvokedUrlCommand) {
-        self.disconnectCallbackId = command.callbackId;
         if (self.imatchDevice.connected()) {
+            self.disconnectCallbackId = command.callbackId;
             self.imatchDevice.disconnect()
         } else {
-            self.didDisconnect()
+            let message = createMessage(method: "disconnect", data: true)
+            sendPluginResult(message: message, callback: command.callbackId, keep: false);
         }
     }
-    
+
     func getArgumentAsBool(command: CDVInvokedUrlCommand, index:Int) -> Bool {
         let obj = command.arguments[index]
         if (obj is String) {
@@ -118,7 +150,7 @@ import iMatchSDK
     }
 
     @objc(setDisconnectHandler:) func setDisconnectHandler(command: CDVInvokedUrlCommand) {
-        self.disconnectCallbackId = command.callbackId;
+        self.disconnectHandlerCallbackId = command.callbackId;
     }
 
     @objc(isCharging:) func isCharging(command: CDVInvokedUrlCommand) {
@@ -127,8 +159,12 @@ import iMatchSDK
     }
     
     @objc(needsUpdate:) func needsUpdate(command: CDVInvokedUrlCommand) {
-        let needsUpdate = (self.updater?.needsUpdate())! || !self.isFirmwareSupported()
-        let message = self.createMessage(method: "needsupdate", data: ["required": needsUpdate, "version" : self.updater?.version()]);
+        let needsUpdate = self.updater.needsUpdate() || !self.isFirmwareSupported()
+        var data: [String: Any] = ["required": needsUpdate]
+        if let version = self.updater.version() {
+            data["version"] = version
+        }
+        let message = self.createMessage(method: "needsupdate", data: data);
         self.sendPluginResult(message: message, callback: command.callbackId);
     }
     
@@ -141,7 +177,7 @@ import iMatchSDK
         
         self.isUpdating = true;
         var step: Int = -1;
-        self.updater?.update(forceUpdate: false) { status in
+        self.updater.update(forceUpdate: false) { status in
             switch status {
             case .success(let progress):
                 if (step != Int(progress.progress) || progress.completed) {
@@ -171,7 +207,7 @@ import iMatchSDK
     }
     
     @objc(cancelUpdate:) func cancelUpdate(command: CDVInvokedUrlCommand) {
-        self.updater?.cancel();
+        self.updater.cancel();
         
         self.isUpdating = false;
         
@@ -195,29 +231,44 @@ import iMatchSDK
         
     @objc(write:) func write(command: CDVInvokedUrlCommand) {
         print("Writing")
-        
-        let dataString = command.arguments[0] as! String
-        let data = Data(dataString.utf8)
 
-        self.imatchDevice = iMatchDevice.getInstance()
-
-        do {
-            let json = try JSONSerialization.jsonObject(with: data, options: []) as! [String: Any]
-            let deviceString = json["device"] as! String
-            let methodString = json["method"] as! String
-            let params = json["params"] as! String
-
-            let device = Device(rawValue: deviceString) ?? .None
-            let method = Method(rawValue: methodString) ?? .NONE
-
-            self.imatchDevice.send(device: device, method: method, param: params)
-            let message = createMessage(method: "write")
-            sendPluginResult(message: message, callback: command.callbackId, keep: false);
-        } catch let error as NSError {
-            print("Failed to write: \(error.localizedDescription)")
-            let message = createMessage(method: "write", data: ["code" : error.code, "message" : error.localizedDescription])
-            sendPluginResult(message: message, callback: command.callbackId, ok: false, keep: false);
+        // The JS side passes either an object or a JSON string.
+        var parsed: [String: Any]? = nil
+        if (command.arguments.count > 0) {
+            if let object = command.arguments[0] as? [String: Any] {
+                parsed = object
+            } else if let text = command.arguments[0] as? String {
+                parsed = (try? JSONSerialization.jsonObject(with: Data(text.utf8), options: [])) as? [String: Any]
+            }
         }
+
+        guard let json = parsed else {
+            failWrite(command: command, text: "Expected a JSON object or a JSON string")
+            return
+        }
+
+        guard let deviceString = json["device"] as? String,
+              let methodString = json["method"] as? String,
+              let device = Device(rawValue: deviceString), device != .None,
+              let method = iMatchSDK.Method(rawValue: methodString), method != .NONE else {
+            failWrite(command: command, text: "Unknown device or method")
+            return
+        }
+
+        var params = ""
+        if let value = json["params"] {
+            params = (value as? String) ?? "\(value)"
+        }
+
+        self.imatchDevice.send(device: device, method: method, param: params)
+        let message = createMessage(method: "write")
+        sendPluginResult(message: message, callback: command.callbackId, keep: false);
+    }
+
+    private func failWrite(command: CDVInvokedUrlCommand, text: String) {
+        print("Failed to write: " + text)
+        let message = createMessage(method: "write", data: ["code" : 400, "message" : text])
+        sendPluginResult(message: message, callback: command.callbackId, ok: false, keep: false);
     }
 
     private func fingerprintReaderCanSleep() -> Bool {
@@ -477,6 +528,8 @@ import iMatchSDK
             sendPluginResult(message: message, callback: command.callbackId)
         } catch let error as NSError {
             print("Failed to validate hashes: \(error.localizedDescription)")
+            let message = createMessage(method: "computedHashes", data: ["validated": false, "message": error.localizedDescription])
+            sendPluginResult(message: message, callback: command.callbackId, ok: false, keep: false)
         }
     }
 
@@ -491,6 +544,12 @@ import iMatchSDK
     func onError(code: Int, message: String) {
         print("onError \(code) : " + message)
         let resultMessage = createMessage(method: "error", data: ["code" : code, "message" : message])
+        if (code == 901 && !self.listCallbackId.isEmpty) {
+            // A scan that cannot start reports here, so answer the waiting list call.
+            sendPluginResult(message: resultMessage, callback: self.listCallbackId, ok: false, keep: false);
+            self.listCallbackId = "";
+            return
+        }
         sendPluginResult(message: resultMessage, callback: self.callbackId);
     }
 
@@ -521,17 +580,13 @@ import iMatchSDK
     }
 
     func sendPluginResult(message : [String:Any], callback: String, ok: Bool = true, keep: Bool = true) {
-        var pluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: message)
-
-        if (!ok) {
-            if let data = message["data"] as? String {
-                pluginResult = CDVPluginResult(status: CDVCommandStatus_ERROR,
-                messageAs: data);
-            } else if let data = message["data"] as? [String:String] {
-                pluginResult = CDVPluginResult(status: CDVCommandStatus_ERROR,
-                messageAs: data["message"]);
-            }
+        if (callback.isEmpty) {
+            return
         }
+
+        // Errors carry the same { method, data } message as on Android.
+        let status = ok ? CDVCommandStatus_OK : CDVCommandStatus_ERROR
+        let pluginResult = CDVPluginResult(status: status, messageAs: message)
 
         pluginResult?.setKeepCallbackAs(keep);
         self.commandDelegate!.send(pluginResult, callbackId: callback)
@@ -554,29 +609,26 @@ import iMatchSDK
     func onConnectionChange(connected: Bool) {
         print("onConnectionChange")
         let resultMessage = createMessage(method: "connectionchange", data: ["connected" : connected])
-        sendPluginResult(message: resultMessage, callback: self.connectCallbackId);
-        if (!connected) {
-            sendPluginResult(message: resultMessage, callback: self.disconnectCallbackId);
-            self.imatchDevice.removeDelegate(device: Device.Board, delegate: self)
-        } else {
+        if (connected) {
+            if (self.connectPending) {
+                // First link up after connect, so answer the connect call itself.
+                self.connectPending = false
+                let connectMessage = createMessage(method: "connect", data: ["connected" : true])
+                sendPluginResult(message: connectMessage, callback: self.connectCallbackId);
+            } else {
+                sendPluginResult(message: resultMessage, callback: self.connectCallbackId);
+            }
             self.imatchDevice.requestDeviceInfo()
             self.imatchDevice.requestStatus()
+        } else {
+            sendPluginResult(message: resultMessage, callback: self.connectCallbackId);
+            sendPluginResult(message: resultMessage, callback: self.disconnectHandlerCallbackId);
+            if (!self.disconnectCallbackId.isEmpty) {
+                let disconnectMessage = createMessage(method: "disconnect", data: true)
+                sendPluginResult(message: disconnectMessage, callback: self.disconnectCallbackId, keep: false);
+                self.disconnectCallbackId = "";
+            }
         }
-    }
-
-    // ImatchDeviceDelegate methods
-    func didConnect() {
-        print("didConnect")
-        let resultMessage = createMessage(method: "connect", data: true)
-        sendPluginResult(message: resultMessage, callback: self.callbackId);
-        sendPluginResult(message: resultMessage, callback: self.connectCallbackId);
-    }
-
-    func didDisconnect() {
-        print("didDisconnect")
-        let resultMessage = createMessage(method: "disconnect", data: true)
-        sendPluginResult(message: resultMessage, callback: self.callbackId, keep: false);
-        sendPluginResult(message: resultMessage, callback: self.connectCallbackId, keep: false);
     }
 
     func onError(message: String) {
@@ -1025,7 +1077,7 @@ import iMatchSDK
         self.dg1 = dg1
 
         let formatter = createDateFormatter()
-        formatter.dateFormat = "dd-MM-YYYY"
+        formatter.dateFormat = "dd-MM-yyyy"
 
         let dob = dg1.getDateOfBirth()
         let expiry = dg1.getExpiryDate()
@@ -1120,7 +1172,7 @@ import iMatchSDK
         let dg11 = EFDataGroup11(input: Data(base64Encoded: data)!)
         
         let formatter = createDateFormatter()
-        formatter.dateFormat = "dd-MM-YYYY"
+        formatter.dateFormat = "dd-MM-yyyy"
         
         let validated = sod.validateHash(dg11) && self.nfcReader.validateComputedHash(dg: "DG11")
             
@@ -1156,7 +1208,7 @@ import iMatchSDK
         let dg12 = EFDataGroup12(input: Data(base64Encoded: data)!)
         
         let formatter = createDateFormatter()
-        formatter.dateFormat = "dd-MM-YYYY"
+        formatter.dateFormat = "dd-MM-yyyy"
         
         let validated = sod.validateHash(dg12) && self.nfcReader.validateComputedHash(dg: "DG12")
         
@@ -1241,7 +1293,7 @@ import iMatchSDK
         let dg16 = EFDataGroup16(input: Data(base64Encoded: data)!)
         
         let formatter = createDateFormatter()
-        formatter.dateFormat = "dd-MM-YYYY"
+        formatter.dateFormat = "dd-MM-yyyy"
         
         let validated = sod.validateHash(dg16) && self.nfcReader.validateComputedHash(dg: "DG16")
         
