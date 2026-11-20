@@ -120,6 +120,11 @@ The third argument selects the quality score: `0` none, `1` NFIQ 1 (1 best to 5 
 version the error callback gets code 998 and no capture starts. When the NFIQ 2 plugin is missing on the device, the
 success callback gets a `warning` event instead of `fp_nfiq`. NFIQ 2 is not available on Android yet (error 501).
 
+`setInstallNfiq2Plugin(true)` makes later `update` calls install the NFIQ 2 plugin on an iMatch 45/50 that does not
+have it yet. It is about 5 MB and adds about 50 minutes to the update, so it is off by default. The iMatch needs
+firmware 1.12.5.4 or newer to report whether the plugin is installed; the firmware update that `update` starts with
+brings it there.
+
 #### Timeout and cancel (iMatch 45/50, firmware 1.12.5.4 or newer)
 
 The last argument of `scanFingerprint` is an optional capture timeout: the seconds the scanner may stay idle (no
@@ -175,6 +180,7 @@ iMatch.readSmartcard(function (msg) { /* read_card, read_id, read_person, read_p
 | `needsUpdate(success, error)` | |
 | `update(progress, error)` | progress until `completed`; needs a connected iMatch |
 | `cancelUpdate(success)` | the `update` error callback gets the final event |
+| `setInstallNfiq2Plugin(install, success, error)` | whether `update` installs the optional NFIQ 2 plugin; default `false` |
 | `powerOnFingerprint`, `powerOffFingerprint(tryStandby)` | |
 | `scanFingerprint(imageType, segmented, nfiqVersion, success, error, imageFormats?, timeoutSeconds?)` | iMatch 45/50; `nfiqVersion` 0, 1 or 2 (or `true`/`false`); `imageFormats` defaults to `['WSQ']`, one `fp_image` per format; `timeoutSeconds` 0 to 255 |
 | `cancelFingerprint(success, error)` | iMatch 45/50; result as a `cancel` event on the `scanFingerprint` callback |
@@ -199,5 +205,6 @@ The JS API is identical on both platforms; the depth of document processing is n
 | `read_photo` (smartcard) | as delivered by the SDK | `{ raw, image, mimeType, sourceMimeType }`, `image` always JPEG |
 | `validateComputedHashes` | passive authentication result | error, not available yet |
 | NFIQ 2 (`nfiqVersion` 2) | supported, needs IBScan 1.3.0 or newer | error 501, not available yet |
+| `setInstallNfiq2Plugin(true)` | supported | needs Android SDK 1.6.0 or newer, otherwise error `Not supported` |
 | `access_control` event | `{ type, ... }` | `{ type, success, raw }` |
 | Firmware update | SDK updater | main firmware, then the MP1 second stage on iMatch 45/50 |

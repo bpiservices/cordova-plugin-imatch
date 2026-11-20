@@ -90,6 +90,8 @@ declare namespace IMatch {
         needsUpdate(success: SuccessCallback<NeedsUpdateResult>, error?: ErrorCallback): void;
         update(progress: SuccessCallback<UpdateProgress>, error?: ErrorCallback | SuccessCallback<UpdateError>): void;
         cancelUpdate(success?: SuccessCallback): void;
+        /** Whether later updates install the optional NFIQ 2 plugin on an iMatch 45/50 that does not have it yet; default false. */
+        setInstallNfiq2Plugin(install: boolean, success?: SuccessCallback<boolean>, error?: ErrorCallback): void;
 
         powerOnFingerprint(success?: SuccessCallback, error?: ErrorCallback): void;
         powerOffFingerprint(tryStandby?: boolean, success?: SuccessCallback, error?: ErrorCallback): void;

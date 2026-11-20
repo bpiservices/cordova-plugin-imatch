@@ -245,6 +245,14 @@ import iMatchSDK
         sendPluginResult(message: message, callback: command.callbackId);
     }
 
+    @objc(setInstallNfiq2Plugin:) func setInstallNfiq2Plugin(command: CDVInvokedUrlCommand) {
+        let install = getArgumentAsBool(command: command, index: 0)
+        iMatchUpdater.installNfiq2Plugin = install
+
+        let message = createMessage(method: "install_nfiq2_plugin", data: install)
+        sendPluginResult(message: message, callback: command.callbackId)
+    }
+
     @objc(setReceiveEventListener:) func setReceiveEventListener(command: CDVInvokedUrlCommand) {
         self.deviceCallbackId = command.callbackId
     }

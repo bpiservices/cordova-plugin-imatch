@@ -187,6 +187,7 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
             case "needsUpdate": needsUpdate(callback); return true;
             case "update": update(callback); return true;
             case "cancelUpdate": cancelUpdate(callback); return true;
+            case "setInstallNfiq2Plugin": setInstallNfiq2Plugin(args.optBoolean(0, false), callback); return true;
             case "powerOnFingerprint": powerOnFingerprint(callback); return true;
             case "powerOffFingerprint": powerOffFingerprint(args.optBoolean(0, false), callback); return true;
             case "scanFingerprint": scanFingerprint(args.optString(0, ""), args.optBoolean(1, false), nfiqVersion(args.opt(2)), args.optJSONArray(3), args.optInt(4, 0), callback); return true;
@@ -728,6 +729,21 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
             failUpdate(new Exception("update cancelled"));
         }
         send(callback, message("cancel_update", null), true, false);
+    }
+
+    // The setting exists from Android SDK 1.6.0; reflection keeps the plugin building against older SDK drops
+    private void setInstallNfiq2Plugin(boolean install, CallbackContext callback) {
+        try {
+            Class.forName("com.gridler.imatchlib.SecondStageUpdateTaskWrapper")
+                    .getMethod("setInstallNfiq2Plugin", boolean.class)
+                    .invoke(null, install);
+        } catch (ReflectiveOperationException e) {
+            if (install) {
+                send(callback, message("install_nfiq2_plugin", "Not supported"), false, false);
+                return;
+            }
+        }
+        send(callback, message("install_nfiq2_plugin", install), true, false);
     }
 
     // ---------------------------------------------------------------- fingerprint

@@ -32,6 +32,7 @@ var iMatch = {
     needsUpdate: function (success, error) { call('needsUpdate', [], success, error); },
     update: function (progress, error) { call('update', [], progress, error); },
     cancelUpdate: function (success) { call('cancelUpdate', [], success, null); },
+    setInstallNfiq2Plugin: function (install, success, error) { call('setInstallNfiq2Plugin', [toBool(install)], success, error); },
 
     // Fingerprint reader
     powerOnFingerprint: function (success, error) { call('powerOnFingerprint', [], success, error); },
