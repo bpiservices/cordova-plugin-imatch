@@ -23,7 +23,7 @@ import iMatchSDK
 
     var imageType = ImageType.FLAT_TWO_FINGERS
     var segmentedFingers : Bool = true
-    var calculateNFIQScore : Bool = true
+    var nfiqVersion : NfiqVersion = .NFIQ1
     var imageFormats : [String] = ["wsq"]
     var lastImageFormat : String = "wsq"
     lazy var nfcReader: iMatchNFCReader = iMatchNFCReader.getInstance()
@@ -45,7 +45,11 @@ import iMatchSDK
     private var connectPending = false
     private var connectAttempt = 0
     private let connectTimeoutInSeconds = 30.0
-    
+    private var recoverWithPowerOn = false
+    private var captureTimeoutSeconds = 0
+    private let maximumCaptureTimeoutSeconds = 255
+    private let captureTimeoutErrorMessage = "Capture timeout"
+
     func reset() {
         self.sod = nil
         self.efcom = nil
@@ -62,6 +66,7 @@ import iMatchSDK
         self.requestStatusCallbackId = "";
         self.requestDeviceInfoCallbackId = "";
         self.isUpdating = false;
+        self.recoverWithPowerOn = false;
     }
 
     @objc(initialize:) func initialize(command: CDVInvokedUrlCommand) {
@@ -149,6 +154,31 @@ import iMatchSDK
         return false
     }
 
+    // 0 = none, 1 = NFIQ 1, 2 = NFIQ 2, as a number or string; true and false still mean NFIQ 1 and none
+    func getArgumentAsNfiqVersion(command: CDVInvokedUrlCommand, index: Int) -> NfiqVersion {
+        let obj = command.arguments[index]
+        if let arg = obj as? String {
+            switch arg.lowercased() {
+            case "true", "1", "nfiq1": return .NFIQ1
+            case "2", "nfiq2": return .NFIQ2
+            default: return .NONE
+            }
+        } else if let arg = obj as? Int {
+            return NfiqVersion(rawValue: UInt8(clamping: arg)) ?? .NONE
+        }
+        return .NONE
+    }
+
+    func getArgumentAsInt(command: CDVInvokedUrlCommand, index: Int) -> Int {
+        let obj = command.arguments[index]
+        if let number = obj as? NSNumber {
+            return number.intValue
+        } else if let text = obj as? String {
+            return Int(text) ?? 0
+        }
+        return 0
+    }
+
     @objc(setDisconnectHandler:) func setDisconnectHandler(command: CDVInvokedUrlCommand) {
         self.disconnectHandlerCallbackId = command.callbackId;
     }
@@ -213,6 +243,14 @@ import iMatchSDK
         
         let message = createMessage(method: "cancel_update");
         sendPluginResult(message: message, callback: command.callbackId);
+    }
+
+    @objc(setInstallNfiq2Plugin:) func setInstallNfiq2Plugin(command: CDVInvokedUrlCommand) {
+        let install = getArgumentAsBool(command: command, index: 0)
+        iMatchUpdater.installNfiq2Plugin = install
+
+        let message = createMessage(method: "install_nfiq2_plugin", data: install)
+        sendPluginResult(message: message, callback: command.callbackId)
     }
 
     @objc(setReceiveEventListener:) func setReceiveEventListener(command: CDVInvokedUrlCommand) {
@@ -319,7 +357,7 @@ import iMatchSDK
         }
 
         if (command.arguments.count > 2) {
-            self.calculateNFIQScore = getArgumentAsBool(command: command, index: 2)
+            self.nfiqVersion = getArgumentAsNfiqVersion(command: command, index: 2)
         }
 
         let allowed = ["wsq", "png", "bmp", "jpg2k"]
@@ -330,6 +368,12 @@ import iMatchSDK
             }
         }
         self.imageFormats = formats.isEmpty ? ["wsq"] : formats
+
+        self.captureTimeoutSeconds = 0
+        if command.arguments.count > 4 {
+            let requested = getArgumentAsInt(command: command, index: 4)
+            self.captureTimeoutSeconds = min(max(requested, 0), maximumCaptureTimeoutSeconds)
+        }
 
         switch imageTypeParam {
         case "FLAT_SINGLE_FINGER":
@@ -352,13 +396,37 @@ import iMatchSDK
         self.fingerprintReader = iMatchFingerprintReader.getInstance()
         self.fingerprintReader.setDelegate(self)
 
-        if self.fingerprintReader.getState() == FingerprintReaderState.ON {
+        if self.recoverWithPowerOn {
+            self.recoverWithPowerOn = false
+            self.fingerprintReader.powerOn()
+        } else if self.fingerprintReader.getState() == FingerprintReaderState.ON {
             enroll()
         } else if (self.fingerprintReader.getState() == FingerprintReaderState.STAND_BY){
             self.fingerprintReader.wakeUp()
         } else {
             self.fingerprintReader.powerOn()
         }
+    }
+
+    @objc(cancelFingerprint:) func cancelFingerprint(command: CDVInvokedUrlCommand) {
+        guard self.imatchDevice.connected() else {
+            sendCancelFingerprintError("Not connected", callback: command.callbackId)
+            return
+        }
+        guard fingerprintReaderCanSleep() else {
+            sendCancelFingerprintError("Not supported", callback: command.callbackId)
+            return
+        }
+
+        iMatchFingerprintReader.getInstance().cancel()
+
+        let message = createMessage(method: "cancel_fingerprint")
+        sendPluginResult(message: message, callback: command.callbackId, keep: false)
+    }
+
+    private func sendCancelFingerprintError(_ reason: String, callback: String) {
+        let message = createMessage(method: "cancel_fingerprint", data: reason)
+        sendPluginResult(message: message, callback: callback, ok: false, keep: false)
     }
 
     @objc(scanFingerprintFAP20:) func scanFingerprintFAP20(command: CDVInvokedUrlCommand) {
@@ -686,11 +754,20 @@ import iMatchSDK
         var resultMessage = createMessage(method: method.rawValue, data: data)
 
         switch method {
-            case .POWERON, .WAKE_UP:
+            case .POWERON:
                 enroll()
                 sendPluginResult(message: resultMessage, callback: self.fingerprintCallbackId);
                 break
+            case .WAKE_UP:
+                if data == "1" {
+                    enroll()
+                } else {
+                    iMatchFingerprintReader.getInstance().powerOn()
+                }
+                sendPluginResult(message: resultMessage, callback: self.fingerprintCallbackId);
+                break
             case .ERROR:
+                self.recoverWithPowerOn = (data != captureTimeoutErrorMessage)
                 sendPluginResult(message: resultMessage, callback: self.fingerprintCallbackId, ok: false);
                 break
             case .FP_QUALITY :
@@ -825,8 +902,8 @@ import iMatchSDK
 
         iMatchFingerprintReader.getInstance().enroll(
             imageType: self.imageType,
-            calculateNfiqScore: self.calculateNFIQScore,
-            timeout: 0,
+            nfiqVersion: self.nfiqVersion,
+            timeout: self.captureTimeoutSeconds,
             segmentFingerprints: self.segmentedFingers,
             imageParamBuilder: params,
             checkFingerGeometry: false,

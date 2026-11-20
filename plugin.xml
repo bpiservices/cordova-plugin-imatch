@@ -3,7 +3,7 @@
     xmlns="http://apache.org/cordova/ns/plugins/1.0"
     xmlns:android="http://schemas.android.com/apk/res/android"
     id="cordova-plugin-imatch"
-    version="2.0.0">
+    version="2.1.0">
 
     <name>BPI iMatch</name>
     <description>Cordova plugin for the BPI iMatch, built on the native iMatch SDKs</description>

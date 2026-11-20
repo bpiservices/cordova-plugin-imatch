@@ -6,6 +6,11 @@ function call(action, args, success, error) {
     exec(success || null, error || null, SERVICE, action, args || []);
 }
 
+// Accepts the strings 1.x apps pass, such as 'false', which !! would read as true
+function toBool(value) {
+    return value === true || value === 1 || (typeof value === 'string' && ['true', '1'].indexOf(value.toLowerCase()) >= 0);
+}
+
 var iMatch = {
     // Lifecycle
     initialize: function (success, error) { call('initialize', [], success, error); },
@@ -27,13 +32,16 @@ var iMatch = {
     needsUpdate: function (success, error) { call('needsUpdate', [], success, error); },
     update: function (progress, error) { call('update', [], progress, error); },
     cancelUpdate: function (success) { call('cancelUpdate', [], success, null); },
+    setInstallNfiq2Plugin: function (install, success, error) { call('setInstallNfiq2Plugin', [toBool(install)], success, error); },
 
     // Fingerprint reader
     powerOnFingerprint: function (success, error) { call('powerOnFingerprint', [], success, error); },
-    powerOffFingerprint: function (tryStandby, success, error) { call('powerOffFingerprint', [!!tryStandby], success, error); },
-    scanFingerprint: function (imageType, segmented, calculateNFIQ, success, error, imageFormats) {
-        call('scanFingerprint', [imageType, !!segmented, !!calculateNFIQ, imageFormats || ['WSQ']], success, error);
+    powerOffFingerprint: function (tryStandby, success, error) { call('powerOffFingerprint', [toBool(tryStandby)], success, error); },
+    // nfiqVersion: 0 = none, 1 = NFIQ 1, 2 = NFIQ 2; true and false still select NFIQ 1 and none
+    scanFingerprint: function (imageType, segmented, nfiqVersion, success, error, imageFormats, timeoutSeconds) {
+        call('scanFingerprint', [imageType, toBool(segmented), nfiqVersion, imageFormats || ['WSQ'], timeoutSeconds || 0], success, error);
     },
+    cancelFingerprint: function (success, error) { call('cancelFingerprint', [], success, error); },
     scanFingerprintFAP20: function (success, error) { call('scanFingerprintFAP20', [], success, error); },
 
     // Smartcard reader

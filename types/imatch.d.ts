@@ -19,6 +19,9 @@ declare namespace IMatch {
 
     type FingerprintImageFormat = 'WSQ' | 'PNG' | 'BMP' | 'JPG2K';
 
+    /** 0 = none, 1 = NFIQ 1, 2 = NFIQ 2 (iOS only, needs IBScan 1.3.0 or newer on the device). */
+    type NfiqVersion = 0 | 1 | 2;
+
     type Device = 'sys' | 'fpr' | 'scr' | 'nfc';
 
     interface ConnectResult {
@@ -87,17 +90,23 @@ declare namespace IMatch {
         needsUpdate(success: SuccessCallback<NeedsUpdateResult>, error?: ErrorCallback): void;
         update(progress: SuccessCallback<UpdateProgress>, error?: ErrorCallback | SuccessCallback<UpdateError>): void;
         cancelUpdate(success?: SuccessCallback): void;
+        /** Whether later updates install the optional NFIQ 2 plugin on an iMatch 45/50 that does not have it yet; default false. */
+        setInstallNfiq2Plugin(install: boolean, success?: SuccessCallback<boolean>, error?: ErrorCallback): void;
 
         powerOnFingerprint(success?: SuccessCallback, error?: ErrorCallback): void;
         powerOffFingerprint(tryStandby?: boolean, success?: SuccessCallback, error?: ErrorCallback): void;
         scanFingerprint(
             imageType: FingerprintImageType,
             segmented: boolean,
-            calculateNFIQ: boolean,
+            nfiqVersion: NfiqVersion | boolean,
             success: SuccessCallback<FingerprintImage | any>,
             error?: ErrorCallback,
-            imageFormats?: FingerprintImageFormat[]
+            imageFormats?: FingerprintImageFormat[],
+            /** Seconds without finger activity before the capture stops, 0 to 255; 0 means no timeout. */
+            timeoutSeconds?: number
         ): void;
+        /** Stops a running capture on an iMatch 45/50; the result arrives on the scanFingerprint callback as a `cancel` event. */
+        cancelFingerprint(success?: SuccessCallback, error?: ErrorCallback): void;
         scanFingerprintFAP20(success: SuccessCallback, error?: ErrorCallback): void;
 
         powerOnSmartcard(success?: SuccessCallback, error?: ErrorCallback): void;

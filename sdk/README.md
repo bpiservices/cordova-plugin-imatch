@@ -4,7 +4,7 @@ This folder receives the native iMatch SDK binaries at install time. The zip has
 
 ```
 imatch-sdk/
-├── sdk-version.json       {"android": "1.5.7", "ios": "1.7.6", "minPlugin": "2.0.0"}
+├── sdk-version.json       {"android": "1.5.7", "ios": "1.9.0", "minPlugin": "2.0.0"}
 ├── android/
 │   └── imatchsdk.aar
 └── ios/
