@@ -14,6 +14,10 @@ const PLATFORM_FILES = {
     ios: ['ios/iMatchSDK.xcframework']
 };
 
+const MIN_SDK = {
+    ios: '1.9.0'
+};
+
 function compareVersions(a, b) {
     const pa = String(a).split('.').map(Number);
     const pb = String(b).split('.').map(Number);
@@ -126,6 +130,12 @@ module.exports = function (context) {
         throw new Error(
             PLUGIN_ID + ': the SDK drop requires plugin version ' + info.minPlugin +
             ' or newer, but this plugin is ' + pluginVersion + '. Update the plugin.'
+        );
+    }
+    if (MIN_SDK[platform] && info[platform] && compareVersions(info[platform], MIN_SDK[platform]) < 0) {
+        throw new Error(
+            PLUGIN_ID + ' ' + pluginVersion + ' needs iMatch SDK ' + MIN_SDK[platform] + ' or newer for ' + platform +
+            ', but the SDK drop has ' + info[platform] + '. ' + REQUEST_HINT
         );
     }
     if (info.maxPlugin && compareVersions(pluginVersion, info.maxPlugin) > 0) {

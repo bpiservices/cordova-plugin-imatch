@@ -9,7 +9,7 @@ Cordova plugin for the [BPI iMatch](https://www.bpiservices.eu/solutions/imatch/
 | Cordova CLI | 13 or newer |
 | cordova-android | 15 or newer (target SDK 36, min SDK 24) |
 | cordova-ios | 8 or newer, deployment target 14.4 or newer |
-| iMatch SDK | supplied separately  |
+| iMatch SDK | supplied separately; iOS SDK 1.9.0 or newer |
 
 ## Install
 
@@ -100,7 +100,7 @@ iMatch.hardwareVersion(function (hw) {
     if (hw.data === 'iMatch20') {
         iMatch.scanFingerprintFAP20(onFingerEvent, console.error);
     } else {
-        iMatch.scanFingerprint('FLAT_TWO_FINGERS', false, true, onFingerEvent, console.error, ['WSQ', 'PNG']);
+        iMatch.scanFingerprint('FLAT_TWO_FINGERS', false, 1, onFingerEvent, console.error, ['WSQ', 'PNG']);
     }
 });
 
@@ -114,6 +114,32 @@ function onFingerEvent(msg) {
 ```
 
 `fp_finished` is the only reliable end-of-capture signal. Do not count NFIQ events.
+
+The third argument selects the quality score: `0` none, `1` NFIQ 1 (1 best to 5 worst), `2` NFIQ 2 (0 worst to 100 best).
+`true` and `false` still select NFIQ 1 and none. NFIQ 2 needs IBScan 1.3.0 or newer on the device; with an older
+version the error callback gets code 998 and no capture starts. When the NFIQ 2 plugin is missing on the device, the
+success callback gets a `warning` event instead of `fp_nfiq`. NFIQ 2 is not available on Android yet (error 501).
+
+#### Timeout and cancel (iMatch 45/50, firmware 1.12.5.4 or newer)
+
+The last argument of `scanFingerprint` is an optional capture timeout: the seconds the scanner may stay idle (no
+finger activity) before the capture stops, up to 255; `0` or omitted means no timeout. Once the fingers are acquired
+it no longer applies. When it expires, the error callback gets `{ method: 'error', data: 'Capture timeout' }`, usually
+5 to 10 seconds later while the iMatch restarts the scanner. The reader stays powered on.
+
+`cancelFingerprint(success, error)` stops a running capture, usually within 1 to 2 seconds. Its own callbacks only
+say whether the request was sent; the error callback gets `Not connected`, or `Not supported` on an iMatch 20. The
+result arrives on the `scanFingerprint` callback as a `cancel` event:
+
+| `data` | Meaning |
+|---|---|
+| `'1'` | capture stopped, reader stays on; also sent when nothing was running |
+| `'0'` | the stop failed and the reader was switched off; the next `scanFingerprint` powers it on |
+| `''` | older firmware, the capture was not stopped |
+
+Image data in transit is discarded and the `cancel` event can get lost, so do not wait for it indefinitely; a
+fallback of about 25 seconds works. After an error other than `Capture timeout`, or a failed standby, wake up or
+cancel, the next `scanFingerprint` powers the reader on again before it starts the capture.
 
 ### Documents (NFC)
 
@@ -150,7 +176,8 @@ iMatch.readSmartcard(function (msg) { /* read_card, read_id, read_person, read_p
 | `update(progress, error)` | progress until `completed`; needs a connected iMatch |
 | `cancelUpdate(success)` | the `update` error callback gets the final event |
 | `powerOnFingerprint`, `powerOffFingerprint(tryStandby)` | |
-| `scanFingerprint(imageType, segmented, calculateNFIQ, success, error, imageFormats?)` | iMatch 45/50; `imageFormats` defaults to `['WSQ']`, one `fp_image` per format |
+| `scanFingerprint(imageType, segmented, nfiqVersion, success, error, imageFormats?, timeoutSeconds?)` | iMatch 45/50; `nfiqVersion` 0, 1 or 2 (or `true`/`false`); `imageFormats` defaults to `['WSQ']`, one `fp_image` per format; `timeoutSeconds` 0 to 255 |
+| `cancelFingerprint(success, error)` | iMatch 45/50; result as a `cancel` event on the `scanFingerprint` callback |
 | `scanFingerprintFAP20(success, error)` | iMatch 20 |
 | `powerOnSmartcard`, `powerOffSmartcard`, `readSmartcard` | |
 | `powerOnNFC`, `powerOffNFC`, `scanPassport(mrz, success, error)` | |
@@ -171,5 +198,6 @@ The JS API is identical on both platforms; the depth of document processing is n
 | `read_sod`, other DGs | parsed | `{ raw }` base64 |
 | `read_photo` (smartcard) | as delivered by the SDK | `{ raw, image, mimeType, sourceMimeType }`, `image` always JPEG |
 | `validateComputedHashes` | passive authentication result | error, not available yet |
+| NFIQ 2 (`nfiqVersion` 2) | supported, needs IBScan 1.3.0 or newer | error 501, not available yet |
 | `access_control` event | `{ type, ... }` | `{ type, success, raw }` |
 | Firmware update | SDK updater | main firmware, then the MP1 second stage on iMatch 45/50 |

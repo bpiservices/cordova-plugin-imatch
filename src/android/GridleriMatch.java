@@ -71,6 +71,9 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
     private static final int INFO_TIMEOUT_MS = 2000;
     private static final int CONNECT_TIMEOUT_MS = 30000;
     private static final int UPDATE_INFO_TIMEOUT_MS = 10000;
+    private static final int NFIQ2_NOT_AVAILABLE = 501;
+    private static final int MAXIMUM_CAPTURE_TIMEOUT_S = 255;
+    private static final String CAPTURE_TIMEOUT_ERROR = "Capture timeout";
 
     private static final Map<Method, String> METHOD_NAMES = new HashMap<>();
     static {
@@ -157,6 +160,9 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
     private String lastImageFormat = "wsq";
     private boolean enrollPending;
     private boolean fap20Pending;
+    private int captureTimeoutSeconds;
+    // The Android SDK reports the reader as on or in standby even when power on, wake up, standby or cancel failed
+    private boolean recoverWithPowerOn;
 
     private byte[] lastEfcom;
 
@@ -183,7 +189,8 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
             case "cancelUpdate": cancelUpdate(callback); return true;
             case "powerOnFingerprint": powerOnFingerprint(callback); return true;
             case "powerOffFingerprint": powerOffFingerprint(args.optBoolean(0, false), callback); return true;
-            case "scanFingerprint": scanFingerprint(args.optString(0, ""), args.optBoolean(1, false), args.optBoolean(2, false), args.optJSONArray(3), callback); return true;
+            case "scanFingerprint": scanFingerprint(args.optString(0, ""), args.optBoolean(1, false), nfiqVersion(args.opt(2)), args.optJSONArray(3), args.optInt(4, 0), callback); return true;
+            case "cancelFingerprint": cancelFingerprint(callback); return true;
             case "scanFingerprintFAP20": scanFingerprintFAP20(callback); return true;
             case "powerOnSmartcard": smartcardCallback = callback; requireSmartcard().powerReaderOn(""); keepAlive(callback); return true;
             case "powerOffSmartcard": requireSmartcard().powerReaderOff(); send(callback, message("poweroff smartcard", null), true, false); return true;
@@ -423,6 +430,7 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
                 }
                 enrollPending = false;
                 fap20Pending = false;
+                recoverWithPowerOn = false;
             }
         } catch (JSONException e) {
             Log.e(TAG, "onConnectionChange: " + e.getMessage());
@@ -750,12 +758,17 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
         send(callback, message("poweroff finger", null), true, false);
     }
 
-    private void scanFingerprint(String imageTypeName, boolean segmented, boolean nfiq, JSONArray formats, CallbackContext callback) {
+    private void scanFingerprint(String imageTypeName, boolean segmented, int nfiqVersion, JSONArray formats, int timeoutSeconds, CallbackContext callback) {
         ensureInitialized();
+        if (nfiqVersion == 2) {
+            send(callback, errorMessage(NFIQ2_NOT_AVAILABLE, "NFIQ 2 is not available on Android yet"), false, false);
+            return;
+        }
         fingerprintCallback = callback;
         segmentedFingers = segmented;
-        calculateNfiq = nfiq;
+        calculateNfiq = nfiqVersion == 1;
         imageFormats = parseImageFormats(formats);
+        captureTimeoutSeconds = Math.min(Math.max(timeoutSeconds, 0), MAXIMUM_CAPTURE_TIMEOUT_S);
         switch (imageTypeName) {
             case "FLAT_SINGLE_FINGER": imageType = ImageType.FLAT_SINGLE_FINGER; break;
             case "FLAT_FOUR_FINGERS": imageType = ImageType.FLAT_FOUR_FINGERS; break;
@@ -764,7 +777,11 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
         }
         fap20Pending = false;
         FingerprintReaderState state = fingerprintReader.getState();
-        if (state == FingerprintReaderState.ON) {
+        if (recoverWithPowerOn) {
+            recoverWithPowerOn = false;
+            enrollPending = true;
+            fingerprintReader.powerOn();
+        } else if (state == FingerprintReaderState.ON) {
             enrollPending = false;
             enroll();
         } else if (state == FingerprintReaderState.STAND_BY) {
@@ -786,7 +803,40 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
                 default: params.wsq(); break;
             }
         }
-        fingerprintReader.enroll(imageType, calculateNfiq, 0, segmentedFingers, params, false, FingerType.NONE);
+        fingerprintReader.enroll(imageType, calculateNfiq, captureTimeoutSeconds, segmentedFingers, params, false, FingerType.NONE);
+    }
+
+    private void cancelFingerprint(CallbackContext callback) {
+        ensureInitialized();
+        if (device == null || !device.Connected()) {
+            send(callback, message("cancel_fingerprint", "Not connected"), false, false);
+            return;
+        }
+        if (!fingerprintReaderCanSleep()) {
+            send(callback, message("cancel_fingerprint", "Not supported"), false, false);
+            return;
+        }
+        enrollPending = false;
+        fingerprintReader.cancel();
+        send(callback, message("cancel_fingerprint", null), true, false);
+    }
+
+    // 0 = none, 1 = NFIQ 1, 2 = NFIQ 2, as a number or string; true and false still mean NFIQ 1 and none
+    private static int nfiqVersion(Object arg) {
+        if (arg instanceof Boolean) {
+            return (Boolean) arg ? 1 : 0;
+        }
+        if (arg instanceof Number) {
+            return ((Number) arg).intValue();
+        }
+        if (arg instanceof String) {
+            switch (((String) arg).toLowerCase()) {
+                case "true": case "1": case "nfiq1": return 1;
+                case "2": case "nfiq2": return 2;
+                default: return 0;
+            }
+        }
+        return 0;
     }
 
     private static List<String> parseImageFormats(JSONArray formats) {
@@ -844,14 +894,30 @@ public class GridleriMatch extends CordovaPlugin implements ImatchManagerListene
         JSONObject payload = message(methodName(method), dataAsJson(data));
         switch (method) {
             case POWERON:
-            case WAKE_UP:
                 if (enrollPending) {
                     enrollPending = false;
                     enroll();
                 }
                 send(fingerprintCallback, payload, true, true);
                 break;
+            case WAKE_UP:
+                if (!"1".equals(data)) {
+                    fingerprintReader.powerOn();
+                } else if (enrollPending) {
+                    enrollPending = false;
+                    enroll();
+                }
+                send(fingerprintCallback, payload, true, true);
+                break;
+            case SLEEP:
+            case CANCEL:
+                if ("0".equals(data)) {
+                    recoverWithPowerOn = true;
+                }
+                send(fingerprintCallback, payload, true, true);
+                break;
             case ERROR:
+                recoverWithPowerOn = !CAPTURE_TIMEOUT_ERROR.equals(data);
                 send(fingerprintCallback, payload, false, true);
                 break;
             case FP_QUALITY: {
